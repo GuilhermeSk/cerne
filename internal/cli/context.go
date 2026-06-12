@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/acme/cerne/internal/app"
 	"gitlab.com/acme/cerne/internal/gitback"
 	"gitlab.com/acme/cerne/internal/project"
 )
@@ -72,8 +73,5 @@ func updateLockSnapshot(projDir, sha string) error {
 
 // eventActor returns CERNE_ACTOR when set, "local" otherwise.
 func eventActor() string {
-	if a := os.Getenv("CERNE_ACTOR"); a != "" {
-		return a
-	}
-	return "local"
+	return app.EventActor()
 }
