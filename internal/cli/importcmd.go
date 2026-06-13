@@ -12,6 +12,7 @@ import (
 	"gitlab.com/acme/cerne/internal/domain"
 	"gitlab.com/acme/cerne/internal/gitback"
 	"gitlab.com/acme/cerne/internal/importer"
+	"gitlab.com/acme/cerne/internal/store"
 )
 
 // Dry-run plan breakdown orders; only the states the import heuristics can
@@ -50,7 +51,11 @@ func runImport(cmd *cobra.Command, dir, root string, yes bool) error {
 	if _, err := os.Stat(root); err != nil {
 		return fmt.Errorf("--root: %w", err)
 	}
-	cands, err := importer.Scan(root)
+	proj, err := store.LoadProject(ctx.repoDir)
+	if err != nil {
+		return err
+	}
+	cands, err := importer.Scan(root, proj.Modules)
 	if err != nil {
 		return err
 	}
