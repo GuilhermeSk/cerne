@@ -1,3 +1,4 @@
 project_id = "cerne"
 backend = "git@github.com:henriquesakata/cerne-docs.git"
 default_scope = ""
+autocommit_lock = true
