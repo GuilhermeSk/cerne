@@ -26,6 +26,7 @@ import (
 	"gitlab.com/acme/cerne/internal/materialize"
 	"gitlab.com/acme/cerne/internal/project"
 	"gitlab.com/acme/cerne/internal/store"
+	"gitlab.com/acme/cerne/internal/version"
 	"gitlab.com/acme/cerne/ui"
 )
 
@@ -52,6 +53,12 @@ func newMux(repoDir, projDir, projectID string) http.Handler {
 	})
 	mux.Handle("/", spaHandler())
 	return mux
+}
+
+// handleVersion returns the binary's build version (F-0129) — the same string
+// `cerne --version` reports, so the UI can show which build is serving it.
+func handleVersion(w http.ResponseWriter) {
+	writeJSON(w, http.StatusOK, map[string]string{"version": version.Version})
 }
 
 // handleStats returns the context-savings metric (F-0127): full corpus vs
