@@ -23,6 +23,7 @@ import (
 	"gitlab.com/acme/cerne/internal/index"
 	"gitlab.com/acme/cerne/internal/lint"
 	"gitlab.com/acme/cerne/internal/llm"
+	"gitlab.com/acme/cerne/internal/materialize"
 	"gitlab.com/acme/cerne/internal/project"
 	"gitlab.com/acme/cerne/internal/store"
 	"gitlab.com/acme/cerne/ui"
@@ -51,6 +52,17 @@ func newMux(repoDir, projDir, projectID string) http.Handler {
 	})
 	mux.Handle("/", spaHandler())
 	return mux
+}
+
+// handleStats returns the context-savings metric (F-0127): full corpus vs
+// current projection, per kind and total, computed by materialize.ComputeStats.
+func handleStats(w http.ResponseWriter, repoDir string) {
+	s, err := materialize.ComputeStats(repoDir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorBody(err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, s)
 }
 
 // handleGraph returns the deterministic entity relationship graph
