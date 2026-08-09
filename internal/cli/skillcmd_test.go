@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gitlab.com/acme/cerne/internal/domain"
+	"gitlab.com/acme/cerne/internal/skills"
 	"gitlab.com/acme/cerne/internal/store"
 )
 
@@ -123,7 +124,7 @@ func TestLoadGoldenPathsIncludesRunbooks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	items, err := loadGoldenPaths(repoDir)
+	items, err := skills.LoadGoldenPaths(repoDir)
 	if err != nil {
 		t.Fatalf("loadGoldenPaths: %v", err)
 	}
