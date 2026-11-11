@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/room"
+	"github.com/henriquesakata/cerne/internal/room"
 )
 
 func sessionStartJSON(t *testing.T, sess, cwd string) string {

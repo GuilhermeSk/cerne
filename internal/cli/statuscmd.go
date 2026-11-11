@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // statusStateShort is the compact label for a feature state, used in the

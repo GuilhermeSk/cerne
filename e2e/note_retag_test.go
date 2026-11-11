@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/gitback"
 )
 
 // TestNoteRetagGoldenPath: an untagged note gets tags via `note retag`, then

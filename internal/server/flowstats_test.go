@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/stats"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/stats"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // TestFlowStatsEndpoint: GET /api/stats returns flow metrics (F-0205) computed

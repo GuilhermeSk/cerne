@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/project"
-	"gitlab.com/acme/cerne/internal/room"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/room"
 )
 
 // roomReadTimeout is the long-poll wait for GET .../messages?follow=1 (T-0001).

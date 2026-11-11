@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"gitlab.com/acme/cerne/internal/gitback"
-	"gitlab.com/acme/cerne/internal/project"
-	"gitlab.com/acme/cerne/internal/telemetry"
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/telemetry"
 )
 
 // SaveArtifact writes an artifact file under content/artifacts/<id>/ in the

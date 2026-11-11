@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/gitback"
-	"gitlab.com/acme/cerne/internal/project"
-	"gitlab.com/acme/cerne/internal/spectmpl"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/spectmpl"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // TestBuildSpecDraftPrompt asserts the assembled prompt carries the feature's

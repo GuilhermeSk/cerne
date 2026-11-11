@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/hooks"
+	"github.com/henriquesakata/cerne/internal/hooks"
 )
 
 func newHookCmd() *cobra.Command {

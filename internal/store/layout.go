@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/domain"
 )
 
 var (

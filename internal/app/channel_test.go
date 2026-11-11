@@ -12,9 +12,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/room"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/room"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 var chanT0 = time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/models"
+	"github.com/henriquesakata/cerne/internal/models"
 )
 
 func TestLoadConfigLLMMode(t *testing.T) {

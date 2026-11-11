@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/llm"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/llm"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // autoDriftFixture: backend with an implemented F-0001 carrying a result.md.

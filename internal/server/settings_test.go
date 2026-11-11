@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/gitback"
-	"gitlab.com/acme/cerne/internal/project"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // settingsBackend is a single-project server whose .cernerc carries extra and

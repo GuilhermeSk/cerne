@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/verbs"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/verbs"
 )
 
 // F-0875: `accept queue`. The group never accepts: accept stays the human's

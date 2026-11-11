@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/doccheck"
-	"gitlab.com/acme/cerne/internal/verbs"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/doccheck"
+	"github.com/henriquesakata/cerne/internal/verbs"
 )
 
 func newClarifyCmd() *cobra.Command {

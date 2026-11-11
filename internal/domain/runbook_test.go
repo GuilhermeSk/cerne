@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/domain"
 )
 
 func TestTransitionRunbook(t *testing.T) {

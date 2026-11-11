@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // driftMaxPaths caps how many changed paths a drift-suspect Detail lists before

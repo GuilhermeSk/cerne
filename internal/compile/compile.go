@@ -15,10 +15,10 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
-	"gitlab.com/acme/cerne/internal/wiki"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/wiki"
 )
 
 // EntitySource is one live entity feeding a wiki page, with the content the

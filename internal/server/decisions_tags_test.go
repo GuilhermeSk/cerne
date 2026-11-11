@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // TestDecisionTagsExposed pins the contract the Decisions UI depends on: a

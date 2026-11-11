@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/index"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/index"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // F-0873 fixture: imitates the RB-0070 Bloco 5a structure (S3 to S7 inside one

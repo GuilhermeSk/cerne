@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/gitback"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // seedClarifyFixture populates the backend with live and terminal entities

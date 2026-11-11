@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"gitlab.com/acme/cerne/internal/cli"
+	"github.com/henriquesakata/cerne/internal/cli"
 )
 
 func main() {

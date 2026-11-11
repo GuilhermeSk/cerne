@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/skills"
+	"github.com/henriquesakata/cerne/internal/skills"
 )
 
 const (

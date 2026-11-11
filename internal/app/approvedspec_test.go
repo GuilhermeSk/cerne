@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/gitback"
-	"gitlab.com/acme/cerne/internal/index"
-	"gitlab.com/acme/cerne/internal/lint"
-	"gitlab.com/acme/cerne/internal/materialize"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/index"
+	"github.com/henriquesakata/cerne/internal/lint"
+	"github.com/henriquesakata/cerne/internal/materialize"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // approvedSpecA is the spec a test approves: trailing spaces and no final

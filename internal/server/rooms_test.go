@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/project"
-	"gitlab.com/acme/cerne/internal/room"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/room"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // roomJSON/messageJSON mirror the HTTP contract of the war room endpoints

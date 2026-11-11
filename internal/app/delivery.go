@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/project"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // Delivery carries the already-resolved URLs of the commit/MR that delivered

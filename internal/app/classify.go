@@ -4,14 +4,14 @@ import (
 	"errors"
 
 	"fmt"
-	"gitlab.com/acme/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/gitback"
 	"os"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/classify"
-	"gitlab.com/acme/cerne/internal/doccheck"
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/classify"
+	"github.com/henriquesakata/cerne/internal/doccheck"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // featureClassifiedEvent is appended whenever a module is assigned to a feature

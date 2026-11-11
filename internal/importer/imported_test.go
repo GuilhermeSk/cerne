@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 func TestImportedSources(t *testing.T) {

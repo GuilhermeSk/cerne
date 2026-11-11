@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/slug"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/slug"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // priorityRank orders domain.ValidPriorities (p0..p3) by index; a missing or

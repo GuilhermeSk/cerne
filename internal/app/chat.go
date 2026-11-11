@@ -6,11 +6,11 @@ import (
 	"os"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/llm"
-	"gitlab.com/acme/cerne/internal/project"
-	"gitlab.com/acme/cerne/internal/spectmpl"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/llm"
+	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/spectmpl"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // DefaultAgentPersona is the persona the Backlog chat (F-0210) uses when the

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // TestStaleWorkFindings: an active work whose UpdatedAt is older than the

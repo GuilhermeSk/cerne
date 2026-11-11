@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // TestUntaggedLiveFindings pins the untagged-live rule: a live entity (active

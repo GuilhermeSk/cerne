@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/room"
-	"gitlab.com/acme/cerne/internal/server"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/room"
+	"github.com/henriquesakata/cerne/internal/server"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // minimalMinutesJSON satisfies room close's required-field validation with

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/gitback"
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // settingsBroadcast announces a landed settings write (F-0315) or project

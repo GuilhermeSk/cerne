@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // ideaEvents returns the types of every event of id in the raw log (idea.*

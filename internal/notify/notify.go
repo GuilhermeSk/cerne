@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // Event is the payload of a single transition (crit. 1): {id, kind, action,

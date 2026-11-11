@@ -5,8 +5,8 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"gitlab.com/acme/cerne/internal/gitback"
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // RecordProjectHead writes the user project's current git HEAD to the

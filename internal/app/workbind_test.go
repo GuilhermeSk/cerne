@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/cost"
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/cost"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 func bindTestWork(t *testing.T, repoDir, id string, state domain.WorkState) {

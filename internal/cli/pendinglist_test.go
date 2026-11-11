@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/server"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/server"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // F-0334 crit. 7: `cerne pending list --json` and the ui's GET /pendings are

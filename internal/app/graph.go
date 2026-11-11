@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/mdlink"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/mdlink"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // Node kinds and edge types of the entity graph.

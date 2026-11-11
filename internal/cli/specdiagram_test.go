@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/gitback"
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // TestSpecDiagramByoKeyWritesAndCommits drives `cerne spec diagram` in byo-key

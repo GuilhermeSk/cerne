@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // writeRefWithDoc creates a reference entity plus its content doc carrying the

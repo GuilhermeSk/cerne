@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/app"
 )
 
 func newGraphCmd() *cobra.Command {

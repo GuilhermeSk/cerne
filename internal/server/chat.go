@@ -12,11 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/llm"
-	"gitlab.com/acme/cerne/internal/project"
-	"gitlab.com/acme/cerne/internal/store"
-	"gitlab.com/acme/cerne/internal/verbs"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/llm"
+	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/verbs"
 )
 
 // capabilityIDPattern distinguishes an existing C- id from a free-text title

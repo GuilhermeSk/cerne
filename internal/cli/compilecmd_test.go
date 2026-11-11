@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/compile"
-	"gitlab.com/acme/cerne/internal/gitback"
-	"gitlab.com/acme/cerne/internal/wiki"
+	"github.com/henriquesakata/cerne/internal/compile"
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/wiki"
 )
 
 func TestCompileDelegationFlow(t *testing.T) {

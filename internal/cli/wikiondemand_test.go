@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/lint"
-	"gitlab.com/acme/cerne/internal/spectmpl"
-	"gitlab.com/acme/cerne/internal/wiki"
+	"github.com/henriquesakata/cerne/internal/lint"
+	"github.com/henriquesakata/cerne/internal/spectmpl"
+	"github.com/henriquesakata/cerne/internal/wiki"
 )
 
 // recordSpawns replaces the detached compile spawn with a counter for the

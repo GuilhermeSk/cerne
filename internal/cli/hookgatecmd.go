@@ -12,9 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/cost"
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/cost"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // Hook plumbing subcommands (F-0151). Both read the Claude Code hook JSON from

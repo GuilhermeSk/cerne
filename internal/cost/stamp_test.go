@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/lint"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/lint"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // resultDoc is a result that passes the result checks, ending in its Gauntlet.

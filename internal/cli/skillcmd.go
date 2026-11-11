@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/skills"
+	"github.com/henriquesakata/cerne/internal/skills"
 )
 
 func newSkillCmd() *cobra.Command {

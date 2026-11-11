@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/doccheck"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/doccheck"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // F-0874: verifiable preconditions of a runbook step, and the read-only

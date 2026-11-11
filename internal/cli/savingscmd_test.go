@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/materialize"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/materialize"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // seedStatsProject writes entities and content docs straight into the backend

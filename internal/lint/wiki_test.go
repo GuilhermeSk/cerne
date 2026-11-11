@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
-	"gitlab.com/acme/cerne/internal/wiki"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/wiki"
 )
 
 func byRule(findings []Finding, rule string) []Finding {

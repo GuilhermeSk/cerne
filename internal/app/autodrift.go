@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/llm"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/llm"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // DriftAutoActor is the agent actor stamped on automatic drift erratas, so the

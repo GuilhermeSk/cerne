@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/app"
-	"gitlab.com/acme/cerne/internal/lint"
-	"gitlab.com/acme/cerne/internal/store"
-	"gitlab.com/acme/cerne/internal/verbs"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/lint"
+	"github.com/henriquesakata/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/verbs"
 )
 
 func newFeatureCmd() *cobra.Command {

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // TestCLIProviderCompleteSuccess drives cliProvider with a fake runner: it

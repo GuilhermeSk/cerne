@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/gitback"
 )
 
 // TestConcurrentDisjointEditsRoundTripViaSync reproduces the two-agents reality:
