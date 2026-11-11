@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/notify"
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/notify"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // dispatchWebhook reports a transition via the configured [webhook] (F-0206).

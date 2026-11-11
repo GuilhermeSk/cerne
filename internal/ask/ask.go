@@ -10,8 +10,8 @@ import (
 	"strings"
 	"unicode"
 
-	"gitlab.com/acme/cerne/internal/index"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/index"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // Snippet is one retrieved piece of context. State travels with every snippet

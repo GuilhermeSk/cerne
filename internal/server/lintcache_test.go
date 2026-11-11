@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/lint"
+	"github.com/henriquesakata/cerne/internal/lint"
 )
 
 var errTest = errors.New("boom")

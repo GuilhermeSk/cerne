@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/slug"
+	"github.com/henriquesakata/cerne/internal/slug"
 )
 
 type NoteState string

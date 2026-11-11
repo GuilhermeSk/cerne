@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/hooks"
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/hooks"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // StateDegraded marks a provider capability the surface cannot host (F-0174)

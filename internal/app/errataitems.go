@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // ErrNothingToMerge: no decided, not-yet-merged errata item names a step the

@@ -4,12 +4,12 @@ import (
 	"errors"
 
 	"fmt"
-	"gitlab.com/acme/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/gitback"
 	"strings"
 	"sync"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/domain"
 )
 
 // F-0122 crit. 1: N concurrent creations of the same kind on the shared clone

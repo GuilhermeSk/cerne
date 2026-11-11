@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"os"
 
-	"gitlab.com/acme/cerne/internal/project"
-	"gitlab.com/acme/cerne/internal/telemetry"
+	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/telemetry"
 )
 
 // initServerTelemetry configures the long-running servers' telemetry (F-0149):

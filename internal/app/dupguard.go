@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/dupmatch"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/dupmatch"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // Duplicate-registration guard (F-0147): with multiple agents, the same bug

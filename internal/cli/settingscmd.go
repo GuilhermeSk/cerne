@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // newSettingsCmd is the CLI face of the settings registry (F-0314): the same

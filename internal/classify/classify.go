@@ -8,7 +8,7 @@ package classify
 import (
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/slug"
+	"github.com/henriquesakata/cerne/internal/slug"
 )
 
 // InferModule returns the single declared module that the case points to via

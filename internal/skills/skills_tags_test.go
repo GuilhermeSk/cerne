@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/acme/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/domain"
 )
 
 // TestCerneAuthoringDocumentsTags pins the canonical authoring skill to the

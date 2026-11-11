@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/slug"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/slug"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // ErrNotMermaidSequence is returned by SanitizeMermaid when the cleaned model

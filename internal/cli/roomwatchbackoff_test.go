@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/room"
+	"github.com/henriquesakata/cerne/internal/room"
 )
 
 // fakeRoomReader replays a fixed sequence of readAsSession results (error or

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"gitlab.com/acme/cerne/internal/llm"
-	"gitlab.com/acme/cerne/internal/models"
-	"gitlab.com/acme/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/llm"
+	"github.com/henriquesakata/cerne/internal/models"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // ErrNoModelProvider: the project reaches no provider (delegation, or no

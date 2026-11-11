@@ -1,4 +1,4 @@
-module gitlab.com/acme/cerne
+module github.com/henriquesakata/cerne
 
 go 1.26.4
 

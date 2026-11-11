@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"gitlab.com/acme/cerne/internal/domain"
-	"gitlab.com/acme/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // SpecChangedAfterApproval reports whether approved feature f's live spec
