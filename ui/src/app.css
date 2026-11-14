@@ -64,6 +64,17 @@
 
   /* estados terminais (rejeitado/superseded) */
   --state-terminal-bg: #efece6;
+
+  /* custos (F-0424): cada cor nomeia um papel ou modelo na composição;
+     "desconhecido" não é um deles e fica neutro */
+  --cost-seg-1: #4e79a7;
+  --cost-seg-2: #e15759;
+  --cost-seg-3: #f28e2b;
+  --cost-seg-4: #76b7b2;
+  --cost-seg-5: #59a14f;
+  --cost-seg-6: #b07aa1;
+  --cost-seg-7: #edc948;
+  --cost-seg-unknown: #aaa396;
 }
 
 [data-theme='dark'] {
@@ -121,6 +132,15 @@
   --gnode-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 
   --state-terminal-bg: #2b2a26;
+
+  --cost-seg-1: #7a9fca;
+  --cost-seg-2: #ea7f80;
+  --cost-seg-3: #f2a35c;
+  --cost-seg-4: #8ccbc6;
+  --cost-seg-5: #7cbc72;
+  --cost-seg-6: #c79bbc;
+  --cost-seg-7: #e8cf6a;
+  --cost-seg-unknown: #6e6a5f;
 }
 
 :root {
@@ -1970,27 +1990,170 @@ h2 {
 .dash-process-side dt { color: var(--muted); }
 .dash-process-side dd { margin: 0; }
 
-/* .costs (F-0391): a área Custos reaproveita o visual do .dash-process. */
-.costs section { margin-top: 1.5rem; }
-.costs-top { display: flex; flex-wrap: wrap; gap: 0.75rem 2rem; margin: 1rem 0; }
-.costs-top dt { color: var(--muted); font-size: 0.85em; }
-.costs-top dd { margin: 0; font-size: 1.6em; font-weight: 600; }
-.costs-filters { display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: flex-start; border: 1px solid var(--border-soft); border-radius: 6px; padding: 0.5rem 0.75rem; margin: 1rem 0; }
-.costs-filters > div { display: flex; flex-direction: column; gap: 0.2rem; max-width: 16rem; }
-.costs-filters small { font-size: 0.8em; }
-.costs .costs-bar { width: 100%; min-width: 0; height: 20px; border-radius: 3px; }
-.costs-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding: 0; margin: 0.5rem 0; }
-.costs-legend li { display: inline-flex; align-items: center; gap: 0.35rem; }
-.costs-swatch { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 2px; }
-.costs-sort { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; }
-.costs-sort:hover { text-decoration: underline; }
+/* .costs (F-0391; polida na F-0424): a área Custos é um livro-razão — filtros
+   no topo, o contexto e o resumo logo abaixo, números sempre em coluna. Toda
+   regra fica sob .costs: o painel do Dashboard divide a classe .dash-process e
+   não muda. */
+.costs section { margin-top: 2.25rem; }
+.costs h2 { margin-bottom: 0.75rem; }
+.costs h3 { margin: 1.5rem 0 0.6rem; font-size: 1rem; font-weight: 600; }
+.costs .muted { color: var(--muted); }
+.costs code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  background: var(--surface-2);
+  padding: 0.1rem 0.3rem;
+  border-radius: 6px;
+}
+
+/* Filtros: uma faixa entre filetes, campos em colunas iguais. */
+.costs-filters { min-width: 0; margin: 1.5rem 0 0; padding: 0 0 1.25rem; border: 0; border-bottom: 1px solid var(--border); }
+.costs-filters legend {
+  padding: 0;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.costs-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 1rem; align-items: start; }
+.costs-field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.costs-field label { font-size: 0.85rem; font-weight: 600; }
+.costs-field small { font-size: 0.78rem; line-height: 1.4; color: var(--muted); }
+.costs input,
+.costs select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--border-field);
+  border-radius: 6px;
+}
+.costs input:focus-visible,
+.costs select:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+
+/* Contexto e resumo: o que entrou na conta, os pesos, e os três números. */
+.costs-context { margin: 1.25rem 0 0; }
+.costs-context p { margin: 0; }
+.costs-context .costs-weights { margin-top: 0.2rem; font-size: 0.85rem; color: var(--muted); }
+.costs-context + .muted { margin: 0.75rem 0 0; }
+.costs-top { display: flex; flex-wrap: wrap; gap: 1rem 0; margin: 1.5rem 0 0; }
+.costs-top > div { padding-right: 2rem; margin-right: 2rem; border-right: 1px solid var(--border-soft); }
+.costs-top > div:last-child { padding-right: 0; margin-right: 0; border-right: 0; }
+.costs-top dt { font-size: 0.85rem; color: var(--muted); }
+.costs-top dd { margin: 0.2rem 0 0; font-size: 1.5rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+
+/* Semanas e composição dividem a linha no desktop. */
+.costs-analysis { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0 3rem; align-items: start; }
+.costs-compare-pick { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem; }
+.costs-compare-pick select { width: auto; }
+
+/* Tabelas: cabeçalho calado, números à direita em algarismos tabulares. */
+.costs table { font-size: 0.9rem; }
+.costs th,
+.costs td { padding: 0.45rem 0.75rem; }
+.costs th:first-child,
+.costs td:first-child { padding-left: 0; }
+.costs th:last-child,
+.costs td:last-child { padding-right: 0; }
+.costs thead th { font-size: 0.85rem; font-weight: 600; color: var(--muted); vertical-align: bottom; border-top: 0; border-bottom: 1px solid var(--border); }
+.costs tbody tr:first-child > * { border-top: 0; }
+.costs tbody th { font-weight: 600; }
+.costs .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.costs-total > * { border-top: 1px solid var(--border-strong); font-weight: 600; }
+
+.costs-features tbody tr:hover { background: var(--surface-2); }
+.costs-features td { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.costs-features :is(th, td):first-child { padding-left: 0.5rem; }
+.costs-features :is(th, td):last-child { padding-right: 0.5rem; }
+.costs-id { white-space: nowrap; font-family: ui-monospace, monospace; font-size: 0.78rem; }
+/* Toda coluna encolhe ao seu mínimo e o título fica com o resto. */
+.costs-features thead th { width: 1%; }
+.costs-features thead th:nth-child(2) { width: auto; }
+.costs-title { min-width: 16rem; }
+.costs-features thead .num { min-width: 4.5rem; white-space: normal; }
+.costs-level { white-space: nowrap; }
+.costs-models { font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--muted); }
+.costs-models span { white-space: nowrap; }
+.costs-defeat { font-weight: 600; }
+.costs-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  font: inherit;
+  font-weight: inherit;
+  text-align: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.costs-sort:hover,
+.costs th[aria-sort='ascending'],
+.costs th[aria-sort='descending'] { color: var(--fg); }
+.costs-sort:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; border-radius: 6px; }
+/* A direção da ordenação, desenhada: um triângulo lido do aria-sort. */
+.costs th[aria-sort='ascending'] .costs-sort::after,
+.costs th[aria-sort='descending'] .costs-sort::after {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 5px;
+  background: currentColor;
+}
+.costs th[aria-sort='ascending'] .costs-sort::after { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.costs th[aria-sort='descending'] .costs-sort::after { clip-path: polygon(0 0, 100% 0, 50% 100%); }
+
+/* Composição: a barra e a legenda; cada cor nomeia um papel ou modelo. */
+.costs .costs-bar { display: block; width: 100%; min-width: 0; height: 14px; }
+.costs-bar rect { stroke: var(--bg); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.costs-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 0.3rem 1.25rem; padding: 0; margin: 0.75rem 0 1.25rem; font-size: 0.9rem; }
+.costs-composition .costs-legend { margin-bottom: 0; }
+.costs-legend li { display: inline-flex; align-items: center; gap: 0.4rem; }
+.costs-legend-value { color: var(--muted); font-variant-numeric: tabular-nums; }
+.costs-composition .costs-legend { flex-direction: column; gap: 0; }
+.costs-composition .costs-legend li { display: flex; padding: 0.35rem 0; border-top: 1px solid var(--border-soft); }
+.costs-composition .costs-legend li:first-child { border-top: 0; }
+.costs-composition .costs-legend-value { margin-left: auto; white-space: nowrap; }
+.costs-composition .costs-legend-value > span { display: inline-block; text-align: right; }
+.costs-composition .costs-legend-value > span:first-child { min-width: 3ch; }
+.costs-composition .costs-legend-value > span:last-child { min-width: 7ch; }
+.costs-composition > .muted { margin: 0.75rem 0 0; font-size: 0.85rem; }
+.costs-swatch { flex: none; width: 0.7rem; height: 0.7rem; }
+.costs-seg-1 { fill: var(--cost-seg-1); background: var(--cost-seg-1); }
+.costs-seg-2 { fill: var(--cost-seg-2); background: var(--cost-seg-2); }
+.costs-seg-3 { fill: var(--cost-seg-3); background: var(--cost-seg-3); }
+.costs-seg-4 { fill: var(--cost-seg-4); background: var(--cost-seg-4); }
+.costs-seg-5 { fill: var(--cost-seg-5); background: var(--cost-seg-5); }
+.costs-seg-6 { fill: var(--cost-seg-6); background: var(--cost-seg-6); }
+.costs-seg-7 { fill: var(--cost-seg-7); background: var(--cost-seg-7); }
+.costs-seg-unknown { fill: var(--cost-seg-unknown); background: var(--cost-seg-unknown); }
+
+/* Mudanças e detalhe. */
 .costs-marker { cursor: pointer; }
-.costs-markers { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.costs-marker-panel { border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.75rem; }
-.costs-raw { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+.costs-markers { list-style: none; padding: 0; margin: 0.75rem 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.costs-marker-panel { margin: 0.75rem 0; padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border-card); border-radius: 6px; }
+.costs section.costs-marker-panel { margin-top: 0.75rem; }
+.costs-marker-panel h3 { margin-top: 0; }
+.costs-raw { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1.5rem; margin: 2.25rem 0 0; font-size: 0.9rem; }
 .costs-raw > div { display: contents; }
 .costs-raw dt { color: var(--muted); }
-.costs-raw dd { margin: 0; }
+.costs-raw dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 720px) {
+  .costs-analysis { grid-template-columns: minmax(0, 1fr); }
+  .costs-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 0.75rem; }
+  .costs-top > div { padding-right: 0.75rem; margin-right: 0; }
+  .costs th,
+  .costs td { padding-left: 0.4rem; padding-right: 0.4rem; }
+  .costs-raw { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
+  .costs-raw dd { margin-bottom: 0.5rem; }
+}
 
 .dash-stats {
   display: flex;
