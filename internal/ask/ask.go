@@ -17,10 +17,11 @@ import (
 // so the answer can never present a superseded source as current. The json tags
 // back `cerne ask --json`, which emits the retrieved sources structured.
 type Snippet struct {
-	Source string `json:"source"`        // entity ID, or "wiki:<rel>" for a compiled page
-	Kind   string `json:"kind"`          // feature | decision | reference | wiki
-	State  string `json:"state"`         // lifecycle state; "current" for wiki pages
-	URL    string `json:"url,omitempty"` // source URL for external references; empty otherwise
+	Source string `json:"source"`          // entity ID, or "wiki:<rel>" for a compiled page
+	Kind   string `json:"kind"`            // feature | decision | reference | wiki
+	State  string `json:"state"`           // lifecycle state; "current" for wiki pages
+	Title  string `json:"title,omitempty"` // entity title; empty for wiki pages
+	URL    string `json:"url,omitempty"`   // source URL for external references; empty otherwise
 	Text   string `json:"text"`
 	// Historical marks a source that records the past rather than the present:
 	// any terminal-state entity, and implemented-feature prose (spec/plan/result
@@ -74,7 +75,7 @@ func Retrieve(repoDir, dbPath, query string, history bool, limit int) ([]Snippet
 		if !history && terminalStates[h.State] {
 			continue
 		}
-		snip := Snippet{Source: h.EntityID, Kind: h.Kind, State: h.State, Text: h.Snippet, Historical: historical(h.Kind, h.State)}
+		snip := Snippet{Source: h.EntityID, Kind: h.Kind, State: h.State, Title: h.Title, Text: h.Snippet, Historical: historical(h.Kind, h.State)}
 		switch h.Kind {
 		case "feature":
 			if f, err := store.LoadFeature(repoDir, h.EntityID); err == nil && f.Module != "" {
@@ -186,7 +187,11 @@ func BuildAskPrompt(query string, snippets []Snippet, preamble bool) string {
 		b.WriteString("para o estado atual, decisions/runbooks/notes vigentes e as páginas wiki têm precedência.\n\n")
 	}
 	for _, s := range snippets {
-		header := "## " + s.Source + " (" + s.Kind + ", " + s.State
+		header := "## " + s.Source
+		if s.Title != "" {
+			header += " — " + s.Title
+		}
+		header += " (" + s.Kind + ", " + s.State
 		if s.Historical {
 			header += " — registro histórico"
 		}

@@ -35,6 +35,7 @@ func TestAskJSONHistorical(t *testing.T) {
 			Source     string `json:"source"`
 			State      string `json:"state"`
 			Historical bool   `json:"historical"`
+			Title      string `json:"title"`
 		} `json:"sources"`
 	}
 	if err := json.Unmarshal([]byte(out), &data); err != nil {
@@ -44,6 +45,9 @@ func TestAskJSONHistorical(t *testing.T) {
 	for _, s := range data.Sources {
 		if s.Source == id && s.State == "implemented" {
 			found = true
+			if s.Title != "Parcelamento" {
+				t.Fatalf("source title = %q, want Parcelamento", s.Title)
+			}
 			if !s.Historical {
 				t.Fatalf("implemented source not flagged historical: %+v", s)
 			}

@@ -534,3 +534,50 @@ func TestRetrieveOneSourcePerEntity(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildAskPromptCarriesTitle (B-0004): the header names the source's title
+// after its id; with URL/historical suffixes they keep working.
+func TestBuildAskPromptCarriesTitle(t *testing.T) {
+	prompt := BuildAskPrompt("q", []Snippet{
+		{Source: "F-0004", Kind: "feature", State: "in_development", Title: "Notifications", Text: "x"},
+		{Source: "R-0042", Kind: "reference", State: "current", Title: "PKCE", URL: "https://example.com/p", Historical: true, Text: "y"},
+	}, false)
+	for _, want := range []string{
+		"## F-0004 — Notifications (feature, in_development)\n",
+		"## R-0042 — PKCE (reference, current — registro histórico, referência externa: https://example.com/p)\n",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
+// TestRetrieveCarriesTitle (B-0004): the index result's title lands on the snippet.
+func TestRetrieveCarriesTitle(t *testing.T) {
+	repoDir, dbPath := seed(t)
+	f := store.Feature{ID: "F-0009", Title: "Notificacoes push", Module: "finance", State: domain.StateApproved, CreatedAt: time.Unix(0, 0).UTC(), UpdatedAt: time.Unix(0, 0).UTC()}
+	if err := store.SaveFeature(repoDir, f); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(repoDir, "content", "features", "F-0009", "spec.md")
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	if err := os.WriteFile(p, []byte("# F-0009\n\nAvisos zebrados.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := index.Rebuild(repoDir, dbPath, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	snips, err := Retrieve(repoDir, dbPath, "zebrados", false, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range snips {
+		if s.Source == "F-0009" {
+			if s.Title != "Notificacoes push" {
+				t.Fatalf("title = %q, want %q", s.Title, "Notificacoes push")
+			}
+			return
+		}
+	}
+	t.Fatalf("F-0009 missing: %+v", snips)
+}
