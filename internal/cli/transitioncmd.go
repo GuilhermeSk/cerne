@@ -172,6 +172,7 @@ func runTransition(cmd *cobra.Command, dir string, action domain.Action, id, by,
 	fmt.Fprintln(cmd.OutOrStdout(), transitionLine(action, out))
 	printMovedPendings(cmd.OutOrStdout(), out.Pendings)
 	printMovedPendings(cmd.OutOrStdout(), out.Ideas)
+	printMovedPendings(cmd.OutOrStdout(), out.Cascade) // the children it carried (T-0007)
 	// Approving is accepting the proposed bar (F-0308 crit. 9): say which.
 	if out.Bar != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "Accepted bar: %s\n", out.Bar)
