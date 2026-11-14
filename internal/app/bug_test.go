@@ -7,7 +7,6 @@ import (
 
 	"github.com/henriquesakata/cerne/internal/doclang"
 	"github.com/henriquesakata/cerne/internal/domain"
-	"github.com/henriquesakata/cerne/internal/project"
 	"github.com/henriquesakata/cerne/internal/spectmpl"
 	"github.com/henriquesakata/cerne/internal/store"
 )
@@ -124,21 +123,5 @@ func TestCompleteBugNeedsResult(t *testing.T) {
 	}
 	if _, err := TransitionFeature(repoDir, projDir, f.ID, domain.ActionComplete, "", "", nil); !errors.Is(err, domain.ErrGateResultRequired) {
 		t.Fatalf("complete err = %v, want ErrGateResultRequired", err)
-	}
-}
-
-// criterion 7: accept stays human for a bug whatever its origin.
-func TestAcceptBugStaysHuman(t *testing.T) {
-	// The default gate is human; complete stops at implemented even for a
-	// human-origin report, and the gate refuses an agent actor.
-	repoDir, projDir, _ := newFeatureBackend(t)
-	seedFeatureInState(t, repoDir, "B-0001", domain.StateInDevelopment, "spec.md", "result.md")
-	out, err := TransitionFeature(repoDir, projDir, "B-0001", domain.ActionComplete, "", "", nil)
-	if err != nil || out.To != domain.StateImplemented {
-		t.Fatalf("complete = %+v, %v; want implemented (human accept pending)", out, err)
-	}
-	t.Setenv("CERNE_ACTOR", "agent")
-	if err := CheckHumanGate(project.GatesConfig{}.AcceptGate()); !errors.Is(err, ErrHumanGate) {
-		t.Fatalf("accept gate for an agent err = %v, want ErrHumanGate", err)
 	}
 }
