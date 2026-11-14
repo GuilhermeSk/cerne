@@ -30,7 +30,7 @@ func newEpicCmd() *cobra.Command {
 }
 
 func newEpicNewCmd(dir *string) *cobra.Command {
-	var module, parent, facet, component, file, context, owner, priority string
+	var module, parent, facet, component, file, context, owner, priority, onBehalf string
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "new <title>",
@@ -44,7 +44,7 @@ func newEpicNewCmd(dir *string) *cobra.Command {
 			"  cerne pull\n" + lifecycleSeq,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runFeatureLikeNew(cmd, *dir, args[0], module, parent, facet, component, file, context, force, owner, priority,
+			return runFeatureLikeNew(cmd, *dir, args[0], module, parent, facet, component, file, context, force, owner, priority, onBehalf,
 				app.CreateEpicWithSpec)
 		},
 	}
@@ -57,6 +57,7 @@ func newEpicNewCmd(dir *string) *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "bypass the duplicate-registration guard (F-0147) for a consciously distinct problem")
 	cmd.Flags().StringVar(&owner, "owner", "", "responsible handle (free text, F-0204)")
 	cmd.Flags().StringVar(&priority, "priority", "", "priority (closed set: p0,p1,p2,p3, F-0204)")
+	cmd.Flags().StringVar(&onBehalf, "on-behalf", "", onBehalfHelp)
 	return cmd
 }
 
@@ -73,7 +74,7 @@ func newTaskCmd() *cobra.Command {
 }
 
 func newTaskNewCmd(dir *string) *cobra.Command {
-	var module, parent, facet, component, file, context, owner, priority string
+	var module, parent, facet, component, file, context, owner, priority, onBehalf string
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "new <title>",
@@ -87,7 +88,7 @@ func newTaskNewCmd(dir *string) *cobra.Command {
 			"  cerne feature complete T-NNNN  # result.md still required",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runFeatureLikeNew(cmd, *dir, args[0], module, parent, facet, component, file, context, force, owner, priority,
+			return runFeatureLikeNew(cmd, *dir, args[0], module, parent, facet, component, file, context, force, owner, priority, onBehalf,
 				app.CreateTaskWithSpec)
 		},
 	}
@@ -100,13 +101,14 @@ func newTaskNewCmd(dir *string) *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "bypass the duplicate-registration guard (F-0147) for a consciously distinct problem")
 	cmd.Flags().StringVar(&owner, "owner", "", "responsible handle (free text, F-0204)")
 	cmd.Flags().StringVar(&priority, "priority", "", "priority (closed set: p0,p1,p2,p3, F-0204)")
+	cmd.Flags().StringVar(&onBehalf, "on-behalf", "", onBehalfHelp)
 	return cmd
 }
 
 // runFeatureLikeNew is runFeatureNew generalized over the creation core
 // (F-0203): the same context gate, spec seeding and messages for F-/E-/T-.
-func runFeatureLikeNew(cmd *cobra.Command, dir, title, module, parent, facet, component, file, context string, force bool, owner, priority string,
-	create func(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority string) (store.Feature, error),
+func runFeatureLikeNew(cmd *cobra.Command, dir, title, module, parent, facet, component, file, context string, force bool, owner, priority, onBehalf string,
+	create func(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority, onBehalf string) (store.Feature, error),
 ) error {
 	body, err := readOptionalBody(cmd, file)
 	if err != nil {
@@ -129,7 +131,7 @@ func runFeatureLikeNew(cmd *cobra.Command, dir, title, module, parent, facet, co
 		specBody = spectmpl.StubWithContextIn(store.DocsLanguage(ctx.repoDir), title, context)
 	}
 	f, err := create(ctx.repoDir, ctx.projDir, title, module, parent,
-		splitInforms(facet), splitInforms(component), specBody, force, owner, priority)
+		splitInforms(facet), splitInforms(component), specBody, force, owner, priority, onBehalf)
 	if err != nil {
 		return err
 	}

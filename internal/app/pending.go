@@ -312,7 +312,9 @@ func PromotePendings(repoDir, projDir string, ids []string, as, title, module st
 		if origin := origins[0]; origin.State == domain.StateImplemented || origin.State == domain.StateDone {
 			return nil, store.Feature{}, fmt.Errorf("%w: %s is %s", ErrPendingOriginClosed, origin.ID, origin.State)
 		}
-		create, parent = CreateTaskWithSpec, origins[0].ID
+		create, parent = func(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority string) (store.Feature, error) {
+			return CreateTaskWithSpec(repoDir, projDir, title, module, parent, facets, components, specBody, force, owner, priority, "")
+		}, origins[0].ID
 	}
 	if title == "" {
 		title = ps[0].Title

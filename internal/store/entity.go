@@ -48,7 +48,10 @@ type Feature struct {
 	Capabilities []string `json:"capabilities,omitempty"`
 	// FromIdea is the idea (I-, F-0312) this feature was promoted from — the
 	// structured back-link; the spec's "**Origem:**" line is prose only.
-	FromIdea  string    `json:"from_idea,omitempty"`
+	FromIdea string `json:"from_idea,omitempty"`
+	// Origin is who asked for the demand (T-0005): "human" | "agent", empty for
+	// a card born before the field (unknown, never migrated).
+	Origin    string    `json:"origin,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
