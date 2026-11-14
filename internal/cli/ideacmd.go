@@ -332,7 +332,7 @@ func newIdeaPromoteCmd(dir *string) *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "%s: %s -> %s (%s)\n", i.ID, domain.IdeaActive, i.State, f.ID)
 			// The candidate is a stub (N-0028): same block as feature new (F-0426).
 			imps := printApproveReadiness(cmd.OutOrStdout(), ctx.repoDir, ctx.projDir, f.ID)
-			printNewCardNextStep(cmd.OutOrStdout(), f, true, imps)
+			printNewCardNextStep(cmd.OutOrStdout(), ctx, f, true, imps)
 			return nil
 		},
 	}

@@ -157,12 +157,52 @@ func TestNewCardNextStep_Refused(t *testing.T) {
 	if out, err := cardNew(t, "Exportar o kanban em CSV", "--context", "o time pede", "--dir", projDir); err != nil {
 		t.Fatalf("feature new: %v\n%s", err, out)
 	}
-	out, err := cardNew(t, "Exportar o kanban em CSV", "--context", "outra vez", "--dir", projDir)
+	out, errOut, err := execCerneSplit(t, "feature", "new", "Exportar o kanban em CSV", "--context", "outra vez", "--dir", projDir)
 	if err == nil {
 		t.Fatalf("duplicate accepted:\n%s", out)
 	}
-	if strings.Contains(out, "Next step:") {
-		t.Fatalf("refused creation printed a Next step:\n%s", out)
+	if strings.Contains(out+errOut, "Next step:") {
+		t.Fatalf("refused creation printed a Next step:\n%s%s", out, errOut)
+	}
+}
+
+// Criterion 4: a refused start (the plan is still a stub) prints no block,
+// on either stream.
+func TestFeatureStartNextStep_Refused(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	id := newFeature(t, projDir, "Exportar o kanban em CSV", 1)
+	writeDoc(t, repoDir, id, "spec.md", realDoc(id, "Problema real descrito aqui."))
+	commitBackend(t, repoDir)
+	if out, err := execCerne(t, "feature", "approve", id, "--dir", projDir); err != nil {
+		t.Fatalf("approve: %v\n%s", err, out)
+	}
+	out, errOut, err := execCerneSplit(t, "feature", "start", id, "--dir", projDir)
+	if err == nil {
+		t.Fatalf("start with a stub plan accepted:\n%s", out)
+	}
+	if strings.Contains(out+errOut, "Next step:") {
+		t.Fatalf("refused start printed a Next step:\n%s%s", out, errOut)
+	}
+}
+
+// The approve step names the bar form the agent proposed, in the project's
+// language (F-0418), and none in light mode.
+func TestNewCardNextStep_BarForm(t *testing.T) {
+	for _, c := range []struct{ lang, gauntlet, want, not string }{
+		{"pt-BR", "", "approving accepts the `Barra:` line you proposed", "`Bar:`"},
+		{"en", "", "approving accepts the `Bar:` line you proposed", "Barra"},
+		{"pt-BR", "off", "", "approving accepts"},
+	} {
+		projDir, _, _ := setupProjectIn(t, c.lang)
+		setGauntlet(t, projDir, c.gauntlet)
+		out, err := cardNew(t, "Exportar o kanban em CSV", "--context", "o time pede", "--dir", projDir)
+		if err != nil {
+			t.Fatalf("%s/%s feature new: %v\n%s", c.lang, c.gauntlet, err, out)
+		}
+		block := stepBlock(out)
+		if !strings.Contains(block, c.want) || strings.Contains(block, c.not) || !strings.Contains(block, stepHuman) {
+			t.Fatalf("%s/gauntlet=%q: want %q, not %q, in:\n%s", c.lang, c.gauntlet, c.want, c.not, block)
+		}
 	}
 }
 

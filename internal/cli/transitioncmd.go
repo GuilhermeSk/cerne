@@ -490,9 +490,11 @@ func printApproveReadiness(w io.Writer, repoDir, projDir, id string) []app.Appro
 // to approve and stop. It rides the command's stdout, the one channel every
 // harness delivers, and names only what the card still lacks: the spec when it
 // was seeded from --context, the tags when an axis is empty, the capability
-// when the check says the project's taxonomy wants one. Past candidacy (a task
-// is born approved) there is nothing to approve, so it prints nothing.
-func printNewCardNextStep(w io.Writer, f store.Feature, seeded bool, imps []app.ApproveImpediment) {
+// when the check says the project's taxonomy wants one. The approve line names
+// the bar form the agent proposed, in the project's language (F-0418), unless
+// the project runs light mode. Past candidacy (a task is born approved) there
+// is nothing to approve, so it prints nothing.
+func printNewCardNextStep(w io.Writer, ctx projCtx, f store.Feature, seeded bool, imps []app.ApproveImpediment) {
 	if f.State != domain.StateCandidate {
 		return
 	}
@@ -508,5 +510,9 @@ func printNewCardNextStep(w io.Writer, f store.Feature, seeded bool, imps []app.
 		fmt.Fprintf(w, "  - link its capability: cerne feature capability %s C-… (pick one in 'cerne capability list --tree')\n", f.ID)
 	}
 	fmt.Fprintf(w, "  - run 'cerne feature approve %s --check' and fix every impediment it lists except open clarifications, which go to the human with the approve request\n", f.ID)
-	fmt.Fprintf(w, "  - human approve: ask a human to run 'cerne feature approve %s' and stop — an agent does not approve its own spec and does not implement an unapproved feature\n", f.ID)
+	accepts := ""
+	if ctx.cfg.Gates.GauntletEnabled() {
+		accepts = fmt.Sprintf(" (approving accepts the `%s:` line you proposed)", doclang.Display(doclang.BarLabel, store.DocsLanguage(ctx.repoDir)))
+	}
+	fmt.Fprintf(w, "  - human approve: ask a human to run 'cerne feature approve %s'%s and stop — an agent does not approve its own spec and does not implement an unapproved feature\n", f.ID, accepts)
 }
