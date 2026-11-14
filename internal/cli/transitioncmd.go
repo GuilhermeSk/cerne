@@ -215,6 +215,7 @@ func runTransition(cmd *cobra.Command, dir string, action domain.Action, id, by,
 		printCompleteLearnings(cmd.OutOrStdout(), ctx.repoDir, id)
 	}
 	if action == domain.ActionStart {
+		printTaskAdvice(cmd.OutOrStdout(), ctx, id) // a task has no approve check (T-0007)
 		// The moment-of-action guidance rides stdout, every harness (F-0426).
 		w := cmd.OutOrStdout()
 		fmt.Fprintln(w, "Next step:")

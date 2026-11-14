@@ -2,11 +2,13 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/domain"
 	"github.com/henriquesakata/cerne/internal/spectmpl"
 	"github.com/henriquesakata/cerne/internal/store"
 	"github.com/henriquesakata/cerne/internal/verbs"
@@ -144,13 +146,42 @@ func runFeatureLikeNew(cmd *cobra.Command, dir, title, module, parent, facet, co
 	}
 	if hasBody {
 		fmt.Fprintf(cmd.OutOrStdout(), "✓ %s created (%s) with spec — already synced. Run 'cerne pull' to materialize it locally.\n", f.ID, f.State)
+		printBirthNotes(cmd.OutOrStdout(), ctx, f)
 		imps := printApproveReadiness(cmd.OutOrStdout(), ctx.repoDir, ctx.projDir, f.ID)
 		printNewCardNextStep(cmd.OutOrStdout(), ctx, f, false, imps)
 		return nil
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "%s created (%s) with its context seeded into the spec.\n", f.ID, f.State)
+	printBirthNotes(cmd.OutOrStdout(), ctx, f)
 	// The seeded spec is already a written one for lint and --check (F-0308).
 	imps := printApproveReadiness(cmd.OutOrStdout(), ctx.repoDir, ctx.projDir, f.ID)
 	printNewCardNextStep(cmd.OutOrStdout(), ctx, f, true, imps)
 	return nil
+}
+
+// printBirthNotes is what a card's birth says about its parent's gates
+// (T-0007): a candidate born under a parent already past approval hears that
+// 'cerne task new' is the path born approved (crit. 8 — a hint, nothing
+// changes); a task gets its level advice (crit. 6).
+func printBirthNotes(w io.Writer, ctx projCtx, f store.Feature) {
+	if f.State == domain.StateCandidate && f.Parent != "" {
+		if p, err := store.LoadFeature(ctx.repoDir, f.Parent); err == nil && p.State != domain.StateCandidate {
+			fmt.Fprintf(w, "Hint: %s is already %s: 'cerne task new \"<title>\" --parent %s' creates a task born approved, with no approve of its own (%s stays a candidate)\n", p.ID, p.State, p.ID, f.ID)
+		}
+	}
+	printTaskAdvice(w, ctx, f.ID)
+}
+
+// printTaskAdvice is the approve check's level advice for a task, which has
+// no approve (T-0007 crit. 6): a standard or advanced task declaring "não
+// aplicável" hears it at birth and at start — never a refusal.
+func printTaskAdvice(w io.Writer, ctx projCtx, id string) {
+	if !strings.HasPrefix(id, "T-") {
+		return
+	}
+	for _, a := range app.ApproveAdvices(ctx.repoDir, ctx.projDir, id) {
+		if a.Code == app.AdviceStandardWithoutBar {
+			fmt.Fprintf(w, "Advice (it never blocks the task): %s: %s\n", a.Code, a.Message)
+		}
+	}
 }

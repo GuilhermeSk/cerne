@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,6 +51,84 @@ func TestFeatureAcceptPrintsCascade(t *testing.T) {
 				t.Fatalf("the bulk summary counts the cascaded task too:\n%s", out)
 			}
 		})
+	}
+}
+
+// specFile writes body to a throwaway spec file and returns its path.
+func specFile(t *testing.T, body string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "spec.md")
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestTaskNewWarnsStandardWithoutBar (T-0007 crit. 6): a standard or advanced
+// task declaring "não aplicável" gets the approve check's advice at birth,
+// never a refusal; a light one does not.
+func TestTaskNewWarnsStandardWithoutBar(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	seedCard(t, repoDir, store.Feature{ID: "E-0001", State: domain.StateApproved}, realDoc("E-0001", "Épico."))
+	out, err := execCerne(t, "task", "new", "Passo padrão", "--parent", "E-0001", "--file", specFile(t, strings.ReplaceAll(exemptTaskSpec, "%s", "T-0001")), "--dir", projDir)
+	if err != nil {
+		t.Fatalf("task new: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `standard-without-bar: level standard with "Barra: não aplicável"`) || !strings.Contains(out, "it never blocks") {
+		t.Fatalf("task new output lacks the level advice:\n%s", out)
+	}
+	light := strings.Replace(strings.ReplaceAll(exemptTaskSpec, "%s", "T-0002"), "padrão", "leve", 1)
+	out, err = execCerne(t, "task", "new", "Passo leve", "--parent", "E-0001", "--file", specFile(t, light), "--dir", projDir)
+	if err != nil {
+		t.Fatalf("task new: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "standard-without-bar") {
+		t.Fatalf("a light task with no bar gets no advice:\n%s", out)
+	}
+}
+
+// TestStartTaskWarnsStandardWithoutBar (T-0007 crit. 6): the same advice at
+// the task's start, which still proceeds.
+func TestStartTaskWarnsStandardWithoutBar(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	seedCard(t, repoDir, store.Feature{ID: "E-0001", State: domain.StateApproved}, realDoc("E-0001", "Épico."))
+	seedCard(t, repoDir, store.Feature{ID: "T-0002", Parent: "E-0001", State: domain.StateApproved}, strings.ReplaceAll(exemptTaskSpec, "%s", "T-0002"))
+	out, err := execCerne(t, "feature", "start", "T-0002", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("start: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "standard-without-bar:") {
+		t.Fatalf("start output lacks the level advice:\n%s", out)
+	}
+	if f, _ := store.LoadFeature(repoDir, "T-0002"); f.State != domain.StateInDevelopment {
+		t.Fatalf("T-0002 state = %s, want in_development: the advice never blocks", f.State)
+	}
+}
+
+// TestFeatureNewParentCommittedHintsTask (T-0007 crit. 8): a feature born under
+// a parent already approved (or beyond) points at 'cerne task new', the path
+// born approved — a hint only, the feature is still a candidate F-; under a
+// candidate parent there is no hint.
+func TestFeatureNewParentCommittedHintsTask(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	seedCard(t, repoDir, store.Feature{ID: "E-0001", State: domain.StateInDevelopment}, realDoc("E-0001", "Épico."))
+	seedCard(t, repoDir, store.Feature{ID: "E-0002", State: domain.StateCandidate}, realDoc("E-0002", "Outro épico."))
+	out, err := execCerne(t, "feature", "new", "Filha comprometida", "--parent", "E-0001", "--context", "ctx", "--component", "test", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("feature new: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "E-0001 is already in_development: 'cerne task new \"<title>\" --parent E-0001' creates a task born approved") {
+		t.Fatalf("feature new output lacks the task new hint:\n%s", out)
+	}
+	if f, _ := store.LoadFeature(repoDir, "F-0001"); f.State != domain.StateCandidate {
+		t.Fatalf("F-0001 state = %s, want candidate: the hint changes nothing", f.State)
+	}
+	out, err = execCerne(t, "feature", "new", "Filha livre", "--parent", "E-0002", "--context", "ctx", "--component", "test", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("feature new: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "cerne task new") {
+		t.Fatalf("a candidate parent gets no hint:\n%s", out)
 	}
 }
 
