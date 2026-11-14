@@ -226,7 +226,8 @@ func TestBootRefreshFailureKeepsCatalog(t *testing.T) {
 	}{
 		{"provider error", "byo-key", false, http.StatusInternalServerError, true},
 		{"no api key", "byo-key", true, http.StatusOK, true},
-		{"no listing endpoint", "claude-cli", false, http.StatusOK, true},
+		{"no listing endpoint", "claude-cli", false, http.StatusOK, false},
+		{"no listing endpoint codex", "codex-cli", false, http.StatusOK, false},
 		{"no provider configured", "delegation", false, http.StatusOK, false},
 	}
 	for _, c := range cases {

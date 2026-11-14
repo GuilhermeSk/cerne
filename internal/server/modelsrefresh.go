@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/llm"
 	"github.com/henriquesakata/cerne/internal/models"
 	"github.com/henriquesakata/cerne/internal/telemetry"
 )
@@ -63,6 +64,11 @@ func refreshCatalogAtBoot(ctx context.Context, hub *multiHub, projDir string) {
 	diff, err := app.RefreshModels(ctx, projDir, now)
 	switch {
 	case errors.Is(err, app.ErrNoModelProvider):
+		return
+	case errors.Is(err, llm.ErrNoListing):
+		// The mode cannot list models by design (subscription CLIs, the
+		// default since F-0414), so boot stays quiet; the "log any failure"
+		// of F-0149 means real failures (provider error, missing key).
 		return
 	case err != nil:
 		telemetry.Warn("model catalog refresh failed; keeping the current catalog", "error", err.Error())
