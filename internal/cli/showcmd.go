@@ -473,7 +473,7 @@ func kindForID(id string) (string, bool) {
 		return "", false
 	}
 	switch id[:i] {
-	case "F", "T", "E":
+	case "F", "T", "E", "B":
 		return "feature", true
 	case "D":
 		return "decision", true

@@ -91,6 +91,9 @@ export default function Manage() {
         <a className="new-feature-btn" href="#/new">
           {t.manage.newFeature}
         </a>
+        <a className="new-feature-btn" href="#/bug">
+          {t.reportBug.link}
+        </a>
       </header>
       <div className="filters">
         <button

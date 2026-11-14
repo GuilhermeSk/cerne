@@ -34,6 +34,7 @@ import (
 	"github.com/henriquesakata/cerne/internal/llm"
 	"github.com/henriquesakata/cerne/internal/materialize"
 	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/spectmpl"
 	"github.com/henriquesakata/cerne/internal/stats"
 	"github.com/henriquesakata/cerne/internal/store"
 	"github.com/henriquesakata/cerne/internal/telemetry"
@@ -1271,6 +1272,12 @@ type createFeatureRequest struct {
 	Parent     string   `json:"parent"`
 	Facets     []string `json:"facets"`     // closed-set axis (D-0002/D-0003); unknown facet → 422
 	Components []string `json:"components"` // curated subsystem/tool axis (D-0002/D-0003)
+	// "Reportar correção" (T-0006): prefix "B" mints a bug report from the form's
+	// three fields; the person at the form is the human, whoever started the server.
+	Prefix   string `json:"prefix"`
+	Context  string `json:"context"`
+	Steps    string `json:"steps"`
+	Expected string `json:"expected"`
 }
 
 // createFeatureResponse is the POST /api/features 201 payload.
@@ -1284,7 +1291,20 @@ func handleCreateFeature(w http.ResponseWriter, r *http.Request, repoDir, projDi
 		writeJSON(w, http.StatusBadRequest, errorBody("invalid request body"))
 		return
 	}
-	f, err := app.CreateFeature(repoDir, projDir, req.Title, req.Module, req.Parent, req.Facets, req.Components)
+	var f store.Feature
+	var err error
+	if req.Prefix == "B" {
+		// The person at the form is the human, even under CERNE_ACTOR=agent;
+		// an empty report is refused.
+		if strings.TrimSpace(req.Context) == "" {
+			writeJSON(w, http.StatusUnprocessableEntity, errorBody("the report needs its context"))
+			return
+		}
+		body := spectmpl.BugBodyIn(store.DocsLanguage(repoDir), req.Context, req.Steps, req.Expected)
+		f, err = app.CreateBugByHuman(repoDir, projDir, req.Title, req.Module, req.Facets, req.Components, body, app.HumanAuthor())
+	} else {
+		f, err = app.CreateFeature(repoDir, projDir, req.Title, req.Module, req.Parent, req.Facets, req.Components)
+	}
 	if errors.Is(err, app.ErrSimilarExists) {
 		// Duplicate-registration guard (F-0147): the human sees the same
 		// match list the CLI prints. 409: the conflict is with existing state.

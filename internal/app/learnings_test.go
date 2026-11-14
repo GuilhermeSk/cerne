@@ -225,6 +225,21 @@ func TestLearningsRecompletionReopensTriage(t *testing.T) {
 	}
 }
 
+// A task, an epic and a bug report are feature-shaped: --skip accepts their ids.
+func TestSkipLearningsFeatureShapedIDs(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "tester")
+	repoDir, projDir, _ := newFeatureBackend(t)
+	for _, id := range []string{"T-0005", "E-0001", "B-0001"} {
+		seedLearnFeature(t, repoDir, id, domain.StateImplemented, withLearnings, t0, "")
+	}
+	commitBackend(t, repoDir)
+	for _, id := range []string{"T-0005", "E-0001", "b-0001"} {
+		if err := SkipLearnings(repoDir, projDir, id, "triaged", t0.Add(time.Hour)); err != nil {
+			t.Errorf("%s: %v", id, err)
+		}
+	}
+}
+
 func TestSkipLearningsRefusesWhatIsNotSkippable(t *testing.T) {
 	repoDir, projDir, _ := newFeatureBackend(t)
 	seedLearnFeature(t, repoDir, "F-0001", domain.StateInDevelopment, withLearnings, t0, "")

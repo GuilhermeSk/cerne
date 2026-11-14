@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/henriquesakata/cerne/internal/dectmpl"
+	"github.com/henriquesakata/cerne/internal/doclang"
 	"github.com/henriquesakata/cerne/internal/domain"
 	"github.com/henriquesakata/cerne/internal/plantmpl"
 	"github.com/henriquesakata/cerne/internal/restmpl"
@@ -41,6 +42,32 @@ func findFinding(findings []Finding, file, section string) *Finding {
 		}
 	}
 	return nil
+}
+
+// T-0006: a B- report is checked against the three-section report, not the
+// seven-section feature spec; a missing report section is still flagged.
+func TestIncompleteDocBugReport(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	features := []store.Feature{
+		{ID: "B-0001", Title: "ok", State: domain.StateApproved, CreatedAt: now, UpdatedAt: now},
+		{ID: "B-0002", Title: "short", State: domain.StateApproved, CreatedAt: now, UpdatedAt: now},
+	}
+	for _, f := range features {
+		if err := store.SaveFeature(dir, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bug := doclang.Sections(doclang.Bug, doclang.PT)
+	writeDoc(t, dir, "content/features/B-0001/spec.md", docWith(bug, "", ""))
+	writeDoc(t, dir, "content/features/B-0002/spec.md", docWith(bug, "Como reproduzir", ""))
+	got, err := incompleteDocFindings(dir, features, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || findFinding(got, "content/features/B-0002/spec.md", "Como reproduzir") == nil {
+		t.Fatalf("findings = %+v, want only B-0002 missing 'Como reproduzir'", got)
+	}
 }
 
 func TestIncompleteDocFindings(t *testing.T) {

@@ -17,10 +17,11 @@ var (
 )
 
 // IsFeatureID reports whether id names a feature-shaped entity: a legacy
-// feature (F-), a declared epic (E-) or a task (T-). All three share the
+// feature (F-), a declared epic (E-), a task (T-) or a bug report (B-, T-0006).
+// All four share the
 // feature FSM, store and documents (F-0203).
 func IsFeatureID(id string) bool {
-	return strings.HasPrefix(id, "F-") || strings.HasPrefix(id, "E-") || strings.HasPrefix(id, "T-")
+	return strings.HasPrefix(id, "F-") || strings.HasPrefix(id, "E-") || strings.HasPrefix(id, "T-") || strings.HasPrefix(id, "B-")
 }
 
 // CheckGate verifies the document required by action exists in docs.
@@ -30,7 +31,7 @@ func IsFeatureID(id string) bool {
 // reaching complete requires having passed the approve and start gates —
 // not by CheckGate.
 //
-// The only id-dependent rule is the T- light gate (F-0203): a task's start
+// The only id-dependent rule is the T-/B- light gate (F-0203, T-0006): a task's or bug's start
 // needs no plan of its own — its why lives in the parent PRD. Nothing else
 // ever derives from the prefix; epic behavior stays structural.
 func CheckGate(id string, action Action, docs DocSet) error {
@@ -40,7 +41,7 @@ func CheckGate(id string, action Action, docs DocSet) error {
 			return ErrGateSpecRequired
 		}
 	case ActionStart:
-		if !docs.HasPlan && !strings.HasPrefix(id, "T-") {
+		if !docs.HasPlan && !strings.HasPrefix(id, "T-") && !strings.HasPrefix(id, "B-") {
 			return ErrGatePlanRequired
 		}
 	case ActionComplete:

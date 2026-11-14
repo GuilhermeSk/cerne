@@ -192,6 +192,14 @@ describe('Kanban — chip de prioridade, handle do owner e ordenação (F-0204)'
     expect(card).toHaveTextContent('@ana')
   })
 
+  // T-0006 critério 5: o card mostra a origem da demanda.
+  it('mostra o chip de origem quando o card a tem', async () => {
+    payload = { ...state(), features: [feature('F-0001', { origin: 'human' })] }
+    render(<Kanban />)
+    await waitFor(() => expect(cardOf('F-0001')).toBeInTheDocument())
+    expect(cardOf('F-0001')?.querySelector('.badge-origin')).toHaveAttribute('data-origin', 'human')
+  })
+
   // Critério 4 (sem os campos): nenhum chip/handle desenhado.
   it('não desenha chip nem handle quando owner/priority ausentes', async () => {
     render(<Kanban />)

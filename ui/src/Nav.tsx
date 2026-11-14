@@ -67,7 +67,7 @@ function activeHref(hash: string): string {
   if (hash === '#/pendings' || hash.startsWith('#/pendings?')) return '#/pendings'
   if (hash === '#/ideas' || hash.startsWith('#/ideas?')) return '#/ideas'
   if (hash.startsWith('#/rooms')) return '#/rooms'
-  if (hash.startsWith('#/manage') || hash.startsWith('#/new')) return '#/manage'
+  if (hash.startsWith('#/manage') || hash.startsWith('#/new') || hash.startsWith('#/bug')) return '#/manage'
   if (hash.startsWith('#/decisions') || hash.startsWith('#/d/')) return '#/decisions'
   if (hash.startsWith('#/references') || hash.startsWith('#/r/')) return '#/references'
   if (hash.startsWith('#/runbooks') || hash.startsWith('#/rb/')) return '#/runbooks'

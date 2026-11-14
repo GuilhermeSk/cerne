@@ -27,6 +27,9 @@ func TestCheckGate(t *testing.T) {
 		{"task start without plan passes", "T-0001", ActionStart, DocSet{}, nil},
 		{"task complete without result refuses", "T-0001", ActionComplete, DocSet{}, ErrGateResultRequired},
 		{"task approve without spec refuses", "T-0001", ActionApprove, DocSet{}, ErrGateSpecRequired},
+		// T-0006: a B- bug report is gated like a task at start, like a feature at complete.
+		{"bug start without plan passes", "B-0001", ActionStart, DocSet{}, nil},
+		{"bug complete without result refuses", "B-0001", ActionComplete, DocSet{}, ErrGateResultRequired},
 		{"epic start without plan refuses", "E-0001", ActionStart, DocSet{}, ErrGatePlanRequired},
 	}
 	for _, c := range cases {
@@ -47,7 +50,7 @@ func TestCheckGate(t *testing.T) {
 
 func TestIsFeatureID(t *testing.T) {
 	for id, want := range map[string]bool{
-		"F-0001": true, "E-0002": true, "T-0003": true,
+		"F-0001": true, "E-0002": true, "T-0003": true, "B-0004": true,
 		"D-0001": false, "N-0001": false, "W-0001": false, "RB-0001": false, "": false,
 	} {
 		if got := IsFeatureID(id); got != want {

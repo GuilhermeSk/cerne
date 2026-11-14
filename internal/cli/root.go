@@ -59,6 +59,7 @@ func Root() *cobra.Command {
 	root.AddCommand(newFeatureCmd())
 	root.AddCommand(newEpicCmd())
 	root.AddCommand(newTaskCmd())
+	root.AddCommand(newBugCmd())
 	root.AddCommand(newDecisionCmd())
 	root.AddCommand(newRunbookCmd())
 	root.AddCommand(verbs.MarkLocal(newAcceptCmd()))

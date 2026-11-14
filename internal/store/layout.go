@@ -56,6 +56,7 @@ var idSubdirs = map[string]string{
 	// per-prefix sequences (NextID counts only files matching its own prefix).
 	"E":  featuresSubdir,
 	"T":  featuresSubdir,
+	"B":  featuresSubdir, // bug report (T-0006)
 	"D":  decisionsSubdir,
 	"R":  referencesSubdir,
 	"RB": runbooksSubdir,
