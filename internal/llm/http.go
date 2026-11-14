@@ -78,8 +78,8 @@ func ConfiguredProviders(cfg project.LLMConfig) []string {
 //     (ErrAPIKeyMissing when empty), and returns an *httpProvider.
 //
 // cliModel is the model a subscription CLI is asked for: llm.model only when no
-// provider is set. A model chosen for a byo-key provider (gpt-5, an Anthropic
-// id) must never reach a CLI that would reject it or silently differ (F-0414).
+// provider is set. A model chosen for a byo-key provider (an OpenAI or an
+// Anthropic id) must never reach a CLI that would reject it or silently differ (F-0414).
 func cliModel(c project.LLMConfig) string {
 	if c.Provider != "" {
 		return ""
