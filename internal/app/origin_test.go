@@ -72,3 +72,40 @@ func TestCreateFeatureOnBehalfEmptyRefused(t *testing.T) {
 		t.Fatal("a card was written despite the refusal")
 	}
 }
+
+func TestPromoteIdeaOrigin(t *testing.T) {
+	for actor, want := range map[string]string{"": "human", "agent": "agent"} {
+		t.Setenv("CERNE_ACTOR", actor)
+		repoDir, projDir, _ := newFeatureBackend(t)
+		i, err := CreateIdea(repoDir, projDir, "Uma ideia", "corpo", nil, nil, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, f, err := PromoteIdea(repoDir, projDir, i.ID, "", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f.Origin != want {
+			t.Fatalf("actor %q: origin = %q, want %q", actor, f.Origin, want)
+		}
+	}
+}
+
+func TestPromotePendingOrigin(t *testing.T) {
+	for actor, want := range map[string]string{"": "human", "agent": "agent"} {
+		t.Setenv("CERNE_ACTOR", actor)
+		repoDir, projDir, _ := newFeatureBackend(t)
+		o := pendingOrigin(t, repoDir, projDir, "Origem", nil, nil)
+		p, err := CreatePending(repoDir, projDir, "Um débito", "corpo", o.ID, nil, nil, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, f, err := PromotePending(repoDir, projDir, p.ID, "feature", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f.Origin != want {
+			t.Fatalf("actor %q: origin = %q, want %q", actor, f.Origin, want)
+		}
+	}
+}
