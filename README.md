@@ -138,6 +138,20 @@ cerne search facebook   # history stays searchable
 
 </details>
 
+### Already have a project?
+
+If it already has documentation (specs, ADRs, RFCs, plans, in any layout), bring it in. cerne maps the tree with your AI and shows the plan before writing anything:
+
+```bash
+cerne import --agent                  # map the docs; the plan lands in .docs/import/
+cerne import --agent --ingest         # validate the plan and show what it would create
+cerne import --agent --ingest --yes   # apply it
+```
+
+`--root <dir>` points it at a docs folder other than the project root. With a subscription CLI or an API key set, cerne drafts the plan itself; in delegation mode it hands the mapping prompt to the agent you already run.
+
+A project with only code needs no import: run `cerne init`, then ask your agent to register the features in progress and the decisions in force (`cerne feature new`, `cerne decision new`). From there, new work follows the normal flow.
+
 ### See it with data
 
 An empty project does not show what cerne is for. This builds a fictional one with a realistic history (features in every state, a rejected proposal, a superseded decision, an epic) on your machine, in a few seconds, from the binary alone (no clone, no network; macOS, Linux and Windows):
