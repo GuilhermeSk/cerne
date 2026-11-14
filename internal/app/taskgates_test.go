@@ -210,7 +210,8 @@ func TestApproveCascadeRespectsHumanGate(t *testing.T) {
 	repoDir, projDir, _ := newFeatureBackend(t)
 	seedEpicWithChildren(t, repoDir)
 
-	if _, err := TransitionFeature(repoDir, projDir, "E-0001", domain.ActionApprove, "", "", nil); err != nil {
+	out, err := TransitionFeature(repoDir, projDir, "E-0001", domain.ActionApprove, "", "", nil)
+	if err != nil {
 		t.Fatalf("approve E-0001: %v", err)
 	}
 	if got := reload(t, repoDir, "F-0002").State; got != domain.StateCandidate {
@@ -218,6 +219,25 @@ func TestApproveCascadeRespectsHumanGate(t *testing.T) {
 	}
 	if evs := entityEvents(t, repoDir, "F-0002", "feature.approved"); len(evs) != 0 {
 		t.Fatalf("F-0002 approve events = %+v, want none", evs)
+	}
+	// The skipped cascade says so, for the CLI and the UI to show.
+	if len(out.Cascade) != 1 || !strings.Contains(out.Cascade[0], "children not carried along with E-0001: the human gate") {
+		t.Fatalf("cascade lines = %q, want one saying the human gate kept the children", out.Cascade)
+	}
+}
+
+// TestCascadeHumanGateSilentWithoutChildren: a refused cascade with nothing to
+// carry adds no line — a childless approve reads as before.
+func TestCascadeHumanGateSilentWithoutChildren(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "agent")
+	repoDir, projDir, _ := newFeatureBackend(t)
+	seedWithSpec(t, repoDir, tagged("F-0001", "", domain.StateCandidate), taskBody+namedTaskBar)
+	out, err := TransitionFeature(repoDir, projDir, "F-0001", domain.ActionApprove, "", "", nil)
+	if err != nil {
+		t.Fatalf("approve F-0001: %v", err)
+	}
+	if len(out.Cascade) != 0 {
+		t.Fatalf("cascade lines = %q, want none for a feature with no children", out.Cascade)
 	}
 }
 
@@ -260,8 +280,12 @@ func TestAcceptCascadeSkipsFeatureChildren(t *testing.T) {
 			seedFeatureInState(t, repoDir, "E-0001", domain.StateImplemented)
 			seedWithSpec(t, repoDir, store.Feature{ID: "F-0002", Parent: "E-0001", State: domain.StateImplemented}, taskBody+namedTaskBar)
 			seedWithSpec(t, repoDir, store.Feature{ID: "T-0003", Parent: "E-0001", State: domain.StateImplemented}, taskBody+exemptTaskBar)
-			if _, err := TransitionFeature(repoDir, projDir, "E-0001", domain.ActionAccept, "", "", nil); err != nil {
+			out, err := TransitionFeature(repoDir, projDir, "E-0001", domain.ActionAccept, "", "", nil)
+			if err != nil {
 				t.Fatalf("accept E-0001: %v", err)
+			}
+			if gated := strings.Contains(strings.Join(out.Cascade, "\n"), "children not carried along with E-0001: the human gate"); gated != (actor == "agent") {
+				t.Fatalf("cascade lines = %q: the human-gate line must show exactly when the gate refused", out.Cascade)
 			}
 			if got := reload(t, repoDir, "F-0002").State; got != domain.StateImplemented {
 				t.Fatalf("F-0002 state = %s, want implemented: an F- child keeps its own accept", got)

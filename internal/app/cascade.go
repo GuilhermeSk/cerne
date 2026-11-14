@@ -32,21 +32,18 @@ type cascaded struct {
 // manual approve — the event with its bar and cascade_from, the approved spec
 // kept, the plan scaffolded; every other candidate child stays, listed with
 // its impediment codes. An actor the approve's human gate refuses takes no
-// child along (crit. 2): the CLI refuses the parent first, and the UI calls
-// the core with no gate of its own.
+// child along (crit. 2), and the outcome says so: the CLI refuses the parent
+// first, and the UI calls the core with no gate of its own.
 func cascadeApprove(repoDir, projDir, parentID string, gauntletOn bool) (cascaded, error) {
-	var out cascaded
-	if CheckHumanGate(projectGates(projDir).ApproveGate()) != nil {
-		return out, nil
-	}
-	children, err := childrenOf(repoDir, parentID)
+	children, err := childrenOf(repoDir, parentID, func(c store.Feature) bool { return c.State == cascadeFrom[domain.ActionApprove] })
 	if err != nil {
-		return out, err
+		return cascaded{}, err
 	}
+	if CheckHumanGate(projectGates(projDir).ApproveGate()) != nil {
+		return keptByHumanGate(parentID, children), nil
+	}
+	var out cascaded
 	for _, c := range children {
-		if c.State != cascadeFrom[domain.ActionApprove] {
-			continue
-		}
 		imps, err := approveReadiness(repoDir, c.ID, gauntletOn)
 		if err != nil {
 			return out, err
@@ -99,18 +96,15 @@ func cascadeApprove(repoDir, projDir, parentID string, gauntletOn bool) (cascade
 // An F- child had its own approve and keeps its own accept; an actor the
 // accept's human gate refuses takes no task along.
 func cascadeAccept(repoDir, projDir, parentID string) (cascaded, error) {
-	var out cascaded
-	if CheckHumanGate(projectGates(projDir).AcceptGate()) != nil {
-		return out, nil
-	}
-	children, err := childrenOf(repoDir, parentID)
+	children, err := childrenOf(repoDir, parentID, func(c store.Feature) bool { return isTask(c.ID) && c.State == cascadeFrom[domain.ActionAccept] })
 	if err != nil {
-		return out, err
+		return cascaded{}, err
 	}
+	if CheckHumanGate(projectGates(projDir).AcceptGate()) != nil {
+		return keptByHumanGate(parentID, children), nil
+	}
+	var out cascaded
 	for _, c := range children {
-		if !isTask(c.ID) || c.State != cascadeFrom[domain.ActionAccept] {
-			continue
-		}
 		if err := moveChild(repoDir, &c, domain.ActionAccept, map[string]string{"cascade_from": parentID}); err != nil {
 			return out, err
 		}
@@ -155,13 +149,33 @@ func childBarOutcome(repoDir, id string) string {
 	return b.String()
 }
 
-// childrenOf is parentID's direct children, sorted by id.
-func childrenOf(repoDir, parentID string) ([]store.Feature, error) {
+// childrenOf is parentID's direct children that keep accepts, sorted by id.
+func childrenOf(repoDir, parentID string, keep func(store.Feature) bool) ([]store.Feature, error) {
 	all, err := store.LoadAllFeatures(repoDir)
 	if err != nil {
 		return nil, err
 	}
-	return store.ChildrenByParent(all)[parentID], nil
+	var out []store.Feature
+	for _, c := range store.ChildrenByParent(all)[parentID] {
+		if keep(c) {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// keptByHumanGate is the cascade of an actor the human gate refuses: no child
+// carried and, when some child would have been, the line saying why — the UI
+// started from an agent session reaches the core with that actor.
+func keptByHumanGate(parentID string, waiting []store.Feature) cascaded {
+	if len(waiting) == 0 {
+		return cascaded{}
+	}
+	ids := make([]string, len(waiting))
+	for i, c := range waiting {
+		ids[i] = c.ID
+	}
+	return cascaded{lines: []string{fmt.Sprintf("children not carried along with %s: the human gate refuses this actor (CERNE_ACTOR=agent) — %s stay as they are, for a human to move", parentID, strings.Join(ids, ", "))}}
 }
 
 // moveChild applies action to child c through the FSM, persists it and
