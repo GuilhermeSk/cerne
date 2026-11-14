@@ -148,7 +148,7 @@ var errGauntletEvidenceName = errors.New("--evidence files must have distinct na
 
 var (
 	errGauntletRecordMode      = errors.New("pass either --verdict <file> --ours A|B, or --critic \"<line>\" (not both)")
-	errGauntletBadID           = errors.New("not a feature id (want F-NNNN)")
+	errGauntletBadID           = errors.New("not a feature id (want F-, E-, T- or B-NNNN)")
 	errGauntletNotMaterialized = errors.New("the feature's result is not in .docs/ (only active features are materialized)")
 )
 
@@ -176,7 +176,7 @@ func newGauntletRecordCmd() *cobra.Command {
 	return cmd
 }
 
-var gauntletIDRe = regexp.MustCompile(`^F-\d+$`)
+var gauntletIDRe = regexp.MustCompile(`^[FETB]-\d+$`)
 
 func runGauntletRecord(cmd *cobra.Command, dir, id, verdictPath, ours, quote, critic string) error {
 	if !gauntletIDRe.MatchString(id) {

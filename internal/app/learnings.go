@@ -135,7 +135,7 @@ func noteAfter(notes []store.Note, id string, at time.Time) bool {
 	return false
 }
 
-var featureIDRe = regexp.MustCompile(`^F-\d+$`)
+var featureIDRe = regexp.MustCompile(`^[FETB]-\d+$`) // feature-shaped ids (F-0203, T-0006)
 
 var (
 	// ErrNoSuchFeature is returned when --skip names a feature the backend lacks.

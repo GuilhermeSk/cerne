@@ -204,6 +204,18 @@ func TestGauntletRecordRound(t *testing.T) {
 	}
 }
 
+// T-, E- and B- are feature-shaped: the id passes the shape check and fails
+// later, for the real reason (nothing materialized), not as "not a feature id".
+func TestGauntletRecordFeatureShapedIDs(t *testing.T) {
+	projDir, _ := gauntletFixture(t)
+	for _, id := range []string{"T-0006", "E-0001", "B-0001"} {
+		out, err := execCerne(t, "gauntlet", "record", id, "--critic", "x", "--dir", projDir)
+		if !errors.Is(err, errGauntletNotMaterialized) {
+			t.Errorf("%s: err=%v out=%s, want errGauntletNotMaterialized", id, err, out)
+		}
+	}
+}
+
 func TestGauntletRecordRefusals(t *testing.T) {
 	projDir, _ := gauntletFixture(t)
 	res := materializeResult(t, projDir, recordResultPT)
