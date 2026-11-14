@@ -123,6 +123,104 @@ func TestApproveRefusesInheritedBarOnFeature(t *testing.T) {
 	}
 }
 
+// tagged is the card a candidate needs to pass the approve check (F-0336).
+func tagged(id, parent string, s domain.FeatureState) store.Feature {
+	return store.Feature{ID: id, Parent: parent, State: s, Facets: []string{"code"}, Components: []string{"app"}}
+}
+
+// entityEvents returns the events of entity id of type typ.
+func entityEvents(t *testing.T, repoDir, id, typ string) []domain.Event {
+	t.Helper()
+	evs, err := store.ReadEvents(repoDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []domain.Event
+	for _, ev := range evs {
+		if ev.EntityID == id && ev.Type == typ {
+			out = append(out, ev)
+		}
+	}
+	return out
+}
+
+// seedEpicWithChildren seeds candidate E-0001 and its children: F-0002 ready,
+// F-0003 untagged, F-0004 with no bar, F-0005 already approved.
+func seedEpicWithChildren(t *testing.T, repoDir string) {
+	t.Helper()
+	seedWithSpec(t, repoDir, tagged("E-0001", "", domain.StateCandidate), taskBody+namedTaskBar)
+	seedWithSpec(t, repoDir, tagged("F-0002", "E-0001", domain.StateCandidate), taskBody+namedTaskBar)
+	seedWithSpec(t, repoDir, store.Feature{ID: "F-0003", Parent: "E-0001", State: domain.StateCandidate}, taskBody+namedTaskBar)
+	seedWithSpec(t, repoDir, tagged("F-0004", "E-0001", domain.StateCandidate), taskBody+"Só testes.\n")
+	seedWithSpec(t, repoDir, tagged("F-0005", "E-0001", domain.StateApproved), taskBody+namedTaskBar)
+}
+
+// TestApproveCascadesToReadyChildren (crit. 1): a human approving the parent
+// approves, in the same transition, each candidate child the approve check
+// passes — one event per child carrying cascade_from, its approved spec kept
+// and its plan scaffolded — and lists the others with the reason, left in
+// candidate.
+func TestApproveCascadesToReadyChildren(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "")
+	repoDir, projDir, _ := newFeatureBackend(t)
+	seedEpicWithChildren(t, repoDir)
+
+	out, err := TransitionFeature(repoDir, projDir, "E-0001", domain.ActionApprove, "", "", nil)
+	if err != nil {
+		t.Fatalf("approve E-0001: %v", err)
+	}
+	for id, want := range map[string]domain.FeatureState{"E-0001": domain.StateApproved, "F-0002": domain.StateApproved,
+		"F-0003": domain.StateCandidate, "F-0004": domain.StateCandidate, "F-0005": domain.StateApproved} {
+		if got := reload(t, repoDir, id).State; got != want {
+			t.Errorf("%s state = %s, want %s", id, got, want)
+		}
+	}
+	evs := entityEvents(t, repoDir, "F-0002", "feature.approved")
+	if len(evs) != 1 || evs[0].Payload["cascade_from"] != "E-0001" || evs[0].Payload["bar"] == "" {
+		t.Fatalf("F-0002 approve events = %+v, want one carrying cascade_from E-0001 and the bar", evs)
+	}
+	for _, id := range []string{"F-0003", "F-0004", "F-0005"} {
+		if evs := entityEvents(t, repoDir, id, "feature.approved"); len(evs) != 0 {
+			t.Errorf("%s got approve events %+v, want none", id, evs)
+		}
+	}
+	if _, err := os.Stat(store.ApprovedSpecPath(repoDir, "F-0002")); err != nil {
+		t.Errorf("F-0002 approved spec not kept: %v", err)
+	}
+	if _, err := os.Stat(FeatureDocPath(repoDir, "F-0002", "plan.md")); err != nil {
+		t.Errorf("F-0002 plan not scaffolded: %v", err)
+	}
+	lines := strings.Join(out.Cascade, "\n")
+	for _, want := range []string{"F-0002: candidate → approved along with E-0001", "F-0003 stays in candidate: untagged", "F-0004 stays in candidate: bar-missing", "cerne feature approve F-0004 --check"} {
+		if !strings.Contains(lines, want) {
+			t.Errorf("cascade lines lack %q:\n%s", want, lines)
+		}
+	}
+	if strings.Contains(lines, "F-0005") {
+		t.Errorf("an already approved child is no part of the cascade:\n%s", lines)
+	}
+}
+
+// TestApproveCascadeRespectsHumanGate (crit. 2): an agent that may not approve
+// the parent approves no child. The CLI refuses the parent before the core;
+// the core, which the UI calls with no gate of its own, checks the gate before
+// cascading, so even a parent it lets through takes no child along.
+func TestApproveCascadeRespectsHumanGate(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "agent")
+	repoDir, projDir, _ := newFeatureBackend(t)
+	seedEpicWithChildren(t, repoDir)
+
+	if _, err := TransitionFeature(repoDir, projDir, "E-0001", domain.ActionApprove, "", "", nil); err != nil {
+		t.Fatalf("approve E-0001: %v", err)
+	}
+	if got := reload(t, repoDir, "F-0002").State; got != domain.StateCandidate {
+		t.Fatalf("F-0002 state = %s, want candidate: an agent approves no child", got)
+	}
+	if evs := entityEvents(t, repoDir, "F-0002", "feature.approved"); len(evs) != 0 {
+		t.Fatalf("F-0002 approve events = %+v, want none", evs)
+	}
+}
+
 // TestStartTaskAcceptsInheritedBar (crit. 4): each of the four forms starts a
 // task — the inherited one when it names the parent and the parent's bar is
 // named.

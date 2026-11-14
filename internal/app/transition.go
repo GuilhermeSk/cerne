@@ -60,6 +60,9 @@ type TransitionOutcome struct {
 	// Ideas is Pendings for the ideas promoted or linked to the feature
 	// (F-0419): one line per idea moved.
 	Ideas []string
+	// Cascade holds one line per child an approve or accept carried along
+	// (T-0007), and per candidate child an approve left behind, with why.
+	Cascade []string
 }
 
 // ErrApprovalStale is the start refusal for an approved feature whose spec
@@ -159,6 +162,7 @@ func TransitionFeatureOp(op *telemetry.Op, repoDir, projDir, id string, action d
 func TransitionFeatureOpForce(op *telemetry.Op, repoDir, projDir, id string, action domain.Action, by, reason string, d *Delivery, force bool) (TransitionOutcome, error) {
 	var out TransitionOutcome
 	var title string
+	var casc cascaded
 	var baseline bool
 	var renewedAt time.Time
 	if err := ValidateTransitionFlags(action, by, reason); err != nil {
@@ -399,6 +403,10 @@ func TransitionFeatureOpForce(op *telemetry.Op, repoDir, projDir, id string, act
 			if err := keepApprovedSpec(repoDir, id); err != nil {
 				return "", err
 			}
+			// The children ride the parent's approve (T-0007), in this commit.
+			if casc, err = cascadeApprove(repoDir, projDir, id, gauntletOn); err != nil {
+				return "", err
+			}
 		}
 		// Leaving development ends the auto-registered activity (F-0146): the
 		// same commit that records the transition closes the auto work.
@@ -473,14 +481,24 @@ func TransitionFeatureOpForce(op *telemetry.Op, repoDir, projDir, id string, act
 		if epicReady != "" {
 			msg += fmt.Sprintf(" (epic %s ready to close)", epicReady)
 		}
+		if len(casc.moved) > 0 {
+			ids := make([]string, len(casc.moved))
+			for i, c := range casc.moved {
+				ids[i] = c.ID
+			}
+			msg += fmt.Sprintf(" (+ %s)", strings.Join(ids, ", "))
+		}
 		title = f.Title
-		out = TransitionOutcome{ID: id, From: oldState, To: newState, Propagated: propagated, EpicReadyToClose: epicReady, Warnings: warnings, Bar: bar, JudgeQuestion: judgeQuestion, Baseline: baseline, RenewedApprovalAt: renewedAt, Pendings: movedPendings, Ideas: movedIdeas}
+		out = TransitionOutcome{ID: id, From: oldState, To: newState, Propagated: propagated, EpicReadyToClose: epicReady, Warnings: warnings, Bar: bar, JudgeQuestion: judgeQuestion, Baseline: baseline, RenewedApprovalAt: renewedAt, Pendings: movedPendings, Ideas: movedIdeas, Cascade: casc.lines}
 		return msg, nil
 	})
 	if err != nil {
 		return TransitionOutcome{}, err
 	}
 	dispatchWebhook(projDir, id, "feature", string(action), string(out.From), string(out.To), title)
+	for _, c := range casc.moved {
+		dispatchWebhook(projDir, c.ID, "feature", string(action), string(cascadeFrom[action]), string(c.State), c.Title)
+	}
 	return out, nil
 }
 
