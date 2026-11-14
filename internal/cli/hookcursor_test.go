@@ -239,3 +239,73 @@ func TestHookCursorStopFollowup(t *testing.T) {
 		t.Fatalf("second completed stop: want the rationed silence, got:\n%s", out)
 	}
 }
+
+// TestHookNonCursorPayloadWithCursorNamedKeys (crit. 4, critic finding 1): a
+// payload without cursor_version that carries keys Cursor also uses, with
+// other types, still binds — the Cursor fields never fail its decode.
+func TestHookNonCursorPayloadWithCursorNamedKeys(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	if out, err := execCerne(t, "work", "start", "Investigar erro X", "--dir", projDir); err != nil {
+		t.Fatalf("work start: %v\noutput: %s", err, out)
+	}
+	stdin := strings.Replace(hookJSON(t, "sess-other", projDir, "Bash",
+		map[string]any{"command": `cerne work start "Investigar erro X"`},
+		map[string]any{"stdout": "W-0001 criada (active) — Investigar erro X (ator: agent)"}),
+		"{", `{"status":{"code":0},"loop_count":"2","workspace_roots":{"a":1},"conversation_id":7,`, 1)
+	if out, err := execCerneStdin(t, stdin, "hook", "bind-work"); err != nil || strings.TrimSpace(out) != "" {
+		t.Fatalf("hook bind-work: %v\noutput: %s", err, out)
+	}
+	if got := boundTo(t, repoDir, "sess-other"); got != "W-0001" {
+		t.Fatalf("bound id = %q, want W-0001", got)
+	}
+}
+
+// TestCursorToolOutputStaysJSON (critic finding 2): a plain-text tool_output
+// keeps ToolResponse valid JSON (the quoted string), a JSON one is unwrapped.
+func TestCursorToolOutputStaysJSON(t *testing.T) {
+	for _, tc := range []struct{ toolOutput, want string }{
+		{`"{\"output\":\"W-0001 created (active)\"}"`, `{"output":"W-0001 created (active)"}`},
+		{`"plain text, not JSON"`, `"plain text, not JSON"`},
+		{`null`, `null`},
+	} {
+		in, err := decodeHookInput(strings.NewReader(`{"cursor_version":"3.25.6","tool_output":` + tc.toolOutput + `}`))
+		if err != nil {
+			t.Fatalf("%s: %v", tc.toolOutput, err)
+		}
+		if got := string(in.ToolResponse); got != tc.want || !json.Valid(in.ToolResponse) {
+			t.Errorf("tool_output %s: ToolResponse = %s, want %s", tc.toolOutput, got, tc.want)
+		}
+	}
+}
+
+// TestWorkspaceDir (crit. 1b, critic findings 3 and 4): a cwd inside a root —
+// at its top, in a subdir, under the second root or through a symlink — is
+// kept; an empty or outside cwd falls back to the first root.
+func TestWorkspaceDir(t *testing.T) {
+	a, b, out := t.TempDir(), t.TempDir(), t.TempDir()
+	sub := filepath.Join(b, "ui", "src")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(out, "link-to-b")
+	if err := os.Symlink(b, link); err != nil {
+		t.Fatal(err)
+	}
+	roots := []string{a, b + string(filepath.Separator)}
+	for _, tc := range []struct{ cwd, want string }{
+		{a, a},
+		{sub, sub},
+		{b, b},
+		{filepath.Join(link, "ui"), filepath.Join(link, "ui")},
+		{"", a},
+		{out, a},
+		{filepath.Join(a, "..", "elsewhere"), a},
+	} {
+		if got := workspaceDir(tc.cwd, roots); got != tc.want {
+			t.Errorf("workspaceDir(%q) = %q, want %q", tc.cwd, got, tc.want)
+		}
+	}
+	if got := workspaceDir("/x", nil); got != "/x" {
+		t.Errorf("no roots: %q, want /x", got)
+	}
+}

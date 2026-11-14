@@ -52,8 +52,16 @@ type hookInput struct {
 	// Source is the SessionStart origin; "compact" after a compaction (F-0368).
 	Source string `json:"source"`
 
-	// Cursor runs the project's .claude hooks through its third-party import
-	// and sends its own payload, marked by cursor_version (F-0428).
+	// Cursor is set when Cursor sent the payload (F-0428).
+	Cursor *cursorInput `json:"-"`
+}
+
+// cursorInput holds the fields of a Cursor payload — Cursor runs the
+// project's .claude hooks through its third-party import, with its own
+// payload, marked by cursor_version (F-0428). They are decoded in a second
+// pass so that another harness sending a key of the same name with another
+// type never turns its hook into a decode error.
+type cursorInput struct {
 	CursorVersion  string          `json:"cursor_version"`
 	ToolOutput     json.RawMessage `json:"tool_output"`
 	WorkspaceRoots []string        `json:"workspace_roots"`
@@ -64,14 +72,20 @@ type hookInput struct {
 
 // cursor reports a payload delivered by Cursor, which is answered in Cursor's
 // native envelope whatever --format says (F-0428).
-func (in hookInput) cursor() bool { return in.CursorVersion != "" }
+func (in hookInput) cursor() bool { return in.Cursor != nil }
 
 func decodeHookInput(r io.Reader) (hookInput, error) {
+	var raw json.RawMessage
+	if err := json.NewDecoder(r).Decode(&raw); err != nil {
+		return hookInput{}, err
+	}
 	var in hookInput
-	if err := json.NewDecoder(r).Decode(&in); err != nil {
+	if err := json.Unmarshal(raw, &in); err != nil {
 		return in, err
 	}
-	if in.cursor() {
+	var c cursorInput
+	if json.Unmarshal(raw, &c) == nil && c.CursorVersion != "" {
+		in.Cursor = &c
 		normalizeCursorInput(&in)
 	}
 	return in, nil
@@ -83,28 +97,34 @@ func decodeHookInput(r io.Reader) (hookInput, error) {
 // session_id falls back to conversation_id; and loop_count > 0 marks the stop
 // of a follow-up, Claude Code's stop_hook_active.
 func normalizeCursorInput(in *hookInput) {
+	c := in.Cursor
 	if len(in.ToolResponse) == 0 {
+		// The string's own content when it is JSON (the shell result object),
+		// else the JSON string itself: ToolResponse stays valid JSON.
 		var s string
-		if json.Unmarshal(in.ToolOutput, &s) == nil {
+		if json.Unmarshal(c.ToolOutput, &s) == nil && json.Valid([]byte(s)) {
 			in.ToolResponse = json.RawMessage(s)
 		} else {
-			in.ToolResponse = in.ToolOutput
+			in.ToolResponse = c.ToolOutput
 		}
 	}
 	if in.SessionID == "" {
-		in.SessionID = in.ConversationID
+		in.SessionID = c.ConversationID
 	}
-	if in.LoopCount > 0 {
+	if c.LoopCount > 0 {
 		in.StopHookActive = true
 	}
-	in.CWD = workspaceDir(in.CWD, in.WorkspaceRoots)
+	in.CWD = workspaceDir(in.CWD, c.WorkspaceRoots)
 }
 
-// workspaceDir is cwd when it lies inside one of the workspace roots, else the
-// first root (cwd when there is none).
+// workspaceDir is cwd when it lies inside one of the workspace roots (symlinks
+// resolved), else the first root (cwd when there is none).
 func workspaceDir(cwd string, roots []string) string {
 	for _, root := range roots {
-		if rel, err := filepath.Rel(root, cwd); cwd != "" && err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if cwd == "" {
+			break
+		}
+		if rel, err := filepath.Rel(realPath(root), realPath(cwd)); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return cwd
 		}
 	}

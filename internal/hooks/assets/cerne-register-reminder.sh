@@ -5,8 +5,8 @@
 # the one call after them (F-0325) is
 # local only (cache + backend clone, never SSH/network) and fail-open: it
 # exports CERNE_SESSION for the session's own cerne commands and prints the
-# session's pending channel messages, or nothing. The heredoc does not read
-# stdin, so the hook payload reaches that call intact. Tool-managed — do not
+# session's pending channel messages, or nothing. The hook payload is read
+# once, up front, and handed to that call on its stdin. Tool-managed — do not
 # edit; fix it upstream in internal/hooks/assets/ and re-run
 # `cerne hook install`.
 # To turn it off for a process (eval, CI), set CERNE_NO_AGENT_HOOKS=1
@@ -14,17 +14,20 @@
 [ -n "${CERNE_NO_AGENT_HOOKS:-}" ] && exit 0
 # A GUI host (Cursor, an IDE opened from the Dock) can run hooks with the
 # bare system PATH; look where cerne installs to as well (F-0428).
-command -v cerne >/dev/null 2>&1 || PATH="$PATH:$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin"
+command -v cerne >/dev/null 2>&1 || PATH="${PATH:+$PATH:}$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin"
+payload=$(cat)
 # Cursor runs this script through its import of the .claude hooks and reads
-# the hook's stdout as JSON (CURSOR_VERSION is set on every Cursor hook): it
-# gets the same rules and live board in its own envelope (F-0428), unless the
-# project's .cursor/hooks.json already wires cerne's native sessionStart.
-if [ -n "${CURSOR_VERSION:-}" ]; then
-  grep -qs 'cerne hook session-context' "${CURSOR_PROJECT_DIR:-.}/.cursor/hooks.json" && exit 0
+# the hook's stdout as JSON. Its payload carries cursor_version: it gets the
+# same rules and live board in its own envelope (F-0428), unless the project's
+# .cursor/hooks.json already wires cerne's native sessionStart.
+case $payload in
+*'"cursor_version"'*)
+  grep -qs 'cerne hook session-context' "${CURSOR_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-.}}/.cursor/hooks.json" && exit 0
   command -v cerne >/dev/null 2>&1 || exit 0
-  cerne hook session-context --format cursor 2>/dev/null || true
+  printf '%s' "$payload" | cerne hook session-context --format cursor 2>/dev/null || true
   exit 0
-fi
+  ;;
+esac
 cat <<'RULES'
 cerne project rules — make in-flight work visible from minute one:
 - Picking up a FEATURE? First action: `cerne feature new "<title>" --context "<1-3 sentences of why>"` (lands as a candidate on the kanban; --file spec.md for a one-shot spec). Register it complete in that same act: spec (`--file`), tags (`--facet`/`--component`) and, once the project has a capability taxonomy, capability (`cerne feature capability <id> C-…`) — `cerne feature approve <id> --check` flags a card without them and the approve refuses it. Advance it as you go: spec -> approve (HUMAN gate), plan -> `cerne feature start`, result -> `cerne feature complete`. Abandoned? `cerne feature reject <id> --reason "..."`.
@@ -46,5 +49,5 @@ cat <<'RULES'
 RULES
 
 command -v cerne >/dev/null 2>&1 || exit 0
-cerne hook channel --point session-start 2>/dev/null || true
+printf '%s' "$payload" | cerne hook channel --point session-start 2>/dev/null || true
 exit 0

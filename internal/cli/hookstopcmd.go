@@ -67,7 +67,7 @@ func runHookStopCheck(cmd *cobra.Command) {
 	}
 	// Cursor auto-submits the reminder as the next user message (F-0428):
 	// never after a turn the human aborted, or one that errored.
-	if in.cursor() && in.Status != "completed" {
+	if in.cursor() && in.Cursor.Status != "completed" {
 		return
 	}
 	cfg, _, err := project.LoadConfig(in.CWD)

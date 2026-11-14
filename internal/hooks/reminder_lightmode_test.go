@@ -96,11 +96,17 @@ func TestReminder_Cursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	projDir := t.TempDir()
-	if got, want := runReminderUnderCursor(t, bin, projDir, `{"session_id":"s"}`),
-		`ARGS:hook session-context --format cursor STDIN:{"session_id":"s"}`; got != want {
+	cursorPayload := `{"cursor_version":"3.25.6","session_id":"s"}`
+	if got, want := runReminderUnderCursor(t, bin, projDir, cursorPayload),
+		`ARGS:hook session-context --format cursor STDIN:`+cursorPayload; got != want {
 		t.Fatalf("under Cursor:\n got: %q\nwant: %q", got, want)
 	}
-	if got := runReminderUnderCursor(t, t.TempDir(), projDir, "{}"); got != "" {
+	// A Claude Code session launched from a Cursor terminal may inherit
+	// Cursor's env, but its payload has no cursor_version: plain-text rules.
+	if got := runReminderUnderCursor(t, bin, projDir, `{"session_id":"s"}`); !strings.HasPrefix(got, "cerne project rules") {
+		t.Fatalf("non-Cursor payload under Cursor's env: want the plain-text rules, got %q", got)
+	}
+	if got := runReminderUnderCursor(t, t.TempDir(), projDir, cursorPayload); got != "" {
 		t.Fatalf("no cerne on PATH: want silence, got %q", got)
 	}
 	native := `{"hooks":{"sessionStart":[{"command":"sh -c 'cerne hook session-context --format cursor'"}]},"version":1}`
@@ -110,7 +116,7 @@ func TestReminder_Cursor(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projDir, ".cursor", "hooks.json"), []byte(native), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := runReminderUnderCursor(t, bin, projDir, "{}"); got != "" {
+	if got := runReminderUnderCursor(t, bin, projDir, cursorPayload); got != "" {
 		t.Fatalf("native sessionStart wired: want silence, got %q", got)
 	}
 }
