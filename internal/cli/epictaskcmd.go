@@ -110,6 +110,10 @@ func newTaskNewCmd(dir *string) *cobra.Command {
 func runFeatureLikeNew(cmd *cobra.Command, dir, title, module, parent, facet, component, file, context string, force bool, owner, priority, onBehalf string,
 	create func(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority, onBehalf string) (store.Feature, error),
 ) error {
+	// An explicit blank --on-behalf must not read as "flag not passed" (T-0005).
+	if cmd.Flags().Changed("on-behalf") && strings.TrimSpace(onBehalf) == "" {
+		return app.ErrOnBehalfEmpty
+	}
 	body, err := readOptionalBody(cmd, file)
 	if err != nil {
 		return err

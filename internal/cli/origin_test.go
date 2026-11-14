@@ -2,6 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/store"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,5 +87,23 @@ func TestLegacyCardOriginUnknown(t *testing.T) {
 	out, err = execCerne(t, "show", "F-0001", "--dir", projDir)
 	if err != nil || strings.Contains(out, "origin:") {
 		t.Fatalf("legacy text must not print an origin: %v\n%s", err, out)
+	}
+}
+
+func TestOnBehalfExplicitEmptyRefused(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "agent")
+	projDir, _, repoDir := setupProject(t)
+	for _, args := range [][]string{
+		{"feature", "new", "A"},
+		{"epic", "new", "B"},
+		{"task", "new", "C", "--parent", "F-0001"},
+	} {
+		args = append(args, "--context", "ctx", "--on-behalf", "", "--dir", projDir)
+		if _, err := execCerne(t, args...); !errors.Is(err, app.ErrOnBehalfEmpty) {
+			t.Fatalf("%v: err = %v, want ErrOnBehalfEmpty", args[:2], err)
+		}
+	}
+	if fs, _ := store.LoadAllFeatures(repoDir); len(fs) != 0 {
+		t.Fatalf("%d cards written despite the refusal", len(fs))
 	}
 }
