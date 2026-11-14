@@ -74,6 +74,10 @@ func ParityRows() []ParityRow {
 // awaits live validation) — mirrored by a StatusSkipped result at install.
 const degraded = "degraded"
 
+// EveryHarness marks a capability the CLI delivers on its own stdout (F-0426):
+// no install, no hook, the same on every provider — never an install gap.
+const EveryHarness = "CLI output (every harness)"
+
 var parityTable = []ParityRow{
 	{
 		Capability: "Static registration rules (floor)",
@@ -104,8 +108,16 @@ var parityTable = []ParityRow{
 		Gemini:     "AfterTool, matcher run_shell_command (--format gemini)",
 	},
 	{
-		Capability: "Lifecycle + provenance reminders",
-		Claude:     "PostToolUse/Bash (lifecycle-reminder, provenance)",
+		// F-0426: the guidance rides the command's stdout, no hook needed.
+		Capability: "Lifecycle guidance (feature new/start, idea promote)",
+		Claude:     EveryHarness,
+		Cursor:     EveryHarness,
+		Codex:      EveryHarness,
+		Gemini:     EveryHarness,
+	},
+	{
+		Capability: "Provenance reminder",
+		Claude:     "PostToolUse/Bash (provenance)",
 		Cursor:     degraded + ": via third-party toggle",
 		Codex:      "PostToolUse, matcher Bash",
 		Gemini:     degraded + ": AfterTool context envelope pending live validation",

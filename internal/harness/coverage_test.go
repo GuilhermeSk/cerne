@@ -97,6 +97,10 @@ func TestCoverageUndetectedProvider(t *testing.T) {
 		if g.Kind == "degraded" {
 			degraded = true
 		}
+		// F-0426: guidance the CLI prints needs no install, so it is never a gap.
+		if strings.HasPrefix(g.Name, "Lifecycle guidance") {
+			t.Errorf("CLI-printed lifecycle guidance reported as a gap: %+v", g)
+		}
 	}
 	if !missingWithFix {
 		t.Error("undetected gemini has no missing capability with the install fix")

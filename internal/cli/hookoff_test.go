@@ -19,9 +19,11 @@ import (
 )
 
 // runtimeHookSubcommands are the `cerne hook` subcommands an agent host runs
-// on its own events — the ones CERNE_NO_AGENT_HOOKS silences (F-0360).
+// on its own events — the ones CERNE_NO_AGENT_HOOKS silences (F-0360). The
+// retired lifecycle-reminder (F-0426) is out: it reads nothing and does
+// nothing either way, pinned by TestHookLifecycleReminderRetired.
 var runtimeHookSubcommands = []string{
-	"bind-work", "work-gate", "lifecycle-reminder", "stop-check",
+	"bind-work", "work-gate", "stop-check",
 	"provenance", "session-context", "channel", "envelope",
 }
 
