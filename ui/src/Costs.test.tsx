@@ -301,14 +301,16 @@ describe('Custos — filtros (crit. 7)', () => {
     render(<Costs hash="#/costs" />)
     const vendor = await screen.findByLabelText('Vendor')
     expect(within(vendor).getAllByRole('option').map((o) => o.textContent)).toEqual(['todos', 'Anthropic (3)', 'OpenAI (1)'])
-    expect(within(screen.getByLabelText('Esforço')).getAllByRole('option').map((o) => o.textContent)).toEqual([
+    expect(within(screen.getByLabelText('Esforço do modelo')).getAllByRole('option').map((o) => o.textContent)).toEqual([
       'todos',
       'high (1)',
       'desconhecido (3)',
     ])
+    expect(screen.getByLabelText('Nível da feature')).toBeInTheDocument()
     expect(screen.getByText('vendor conhecido em 3 de 4, pelos modelos do custo (claude-* → Anthropic)')).toBeInTheDocument()
-    expect(screen.getByText(/declarado em 2 de 4; o resto é desconhecido/)).toBeInTheDocument()
-    expect(screen.getByText(/nível na spec em 3 de 4/)).toBeInTheDocument()
+    // F-0427: level and effort name their owner and source, so they stop reading as synonyms.
+    expect(screen.getByText('esforço de raciocínio do modelo, declarado no result, em 2 de 4; nunca medido')).toBeInTheDocument()
+    expect(screen.getByText('porte da feature, declarado na spec, em 3 de 4')).toBeInTheDocument()
     expect(screen.getByText(/modelo registrado em 4 de 4/)).toBeInTheDocument()
   })
 
@@ -368,13 +370,16 @@ describe('Custos — inglês (crit. 9)', () => {
     expect(screen.getByText(/4 of 6 delivered in the period with a stamped cost/)).toBeInTheDocument()
     expect(screen.getByRole('table', { name: 'Features in the period' })).toBeInTheDocument()
     expect(screen.getByRole('list', { name: 'Composition by role' })).toHaveTextContent('builder 45% · 850')
-    expect(within(screen.getByLabelText('Level')).getAllByRole('option').map((o) => o.textContent)).toEqual([
+    expect(within(screen.getByLabelText('Feature level')).getAllByRole('option').map((o) => o.textContent)).toEqual([
       'all',
       'light (1)',
       'standard (1)',
       'advanced (1)',
       'unknown (1)',
     ])
+    expect(screen.getByLabelText('Model effort')).toBeInTheDocument()
+    expect(screen.getByText("the feature's size, declared in the spec, in 3 of 4")).toBeInTheDocument()
+    expect(screen.getByText("the model's reasoning effort, declared in the result, in 2 of 4; never measured")).toBeInTheDocument()
   })
 })
 
@@ -421,8 +426,7 @@ describe('Custos — detalhe da feature (crit. 5)', () => {
     expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(
       expect.arrayContaining(['Rodada 1 — derrota', 'Rodada 2 — vitória']),
     )
-    expect(screen.getByText(/esforço high \(declarado\)/)).toBeInTheDocument()
-    expect(screen.getByText(/Nível: leve · esforço high/)).toBeInTheDocument()
+    expect(screen.getByText(/Nível da feature: leve · Esforço do modelo: high \(declarado\)/)).toBeInTheDocument()
     // The drafting LLM is not a vendor of the cost: its own labelled line.
     expect(screen.getByText(/Vendor: Anthropic/)).toBeInTheDocument()
     expect(screen.getByText('Provedor das escritas').parentElement).toHaveTextContent('openai')
@@ -434,6 +438,21 @@ describe('Custos — detalhe da feature (crit. 5)', () => {
     render(<CostDetailPage id="F-0001" />)
     const models = await screen.findByRole('table', { name: 'Por modelo' })
     expect(within(models).getByRole('row', { name: /^desconhecido/ })).toHaveTextContent(/desconhecido.*50.*0.*0.*10.*100.*100%/)
+  })
+
+  it('sem esforço declarado, a linha de metadados diz desconhecido, nos dois idiomas', async () => {
+    api.fetchCostDetail.mockResolvedValue({ ...detail, effort: '', effort_source: 'unknown' })
+    const { unmount } = render(<CostDetailPage id="F-0001" />)
+    expect(await screen.findByText(/Nível da feature: leve · Esforço do modelo: desconhecido ·/)).toBeInTheDocument()
+    unmount()
+    localStorage.setItem('cerne-lang', 'en')
+    api.fetchCostDetail.mockResolvedValue(detail)
+    render(
+      <I18nProvider>
+        <CostDetailPage id="F-0001" />
+      </I18nProvider>,
+    )
+    expect(await screen.findByText(/Feature level: light · Model effort: high \(declared\)/)).toBeInTheDocument()
   })
 
   it('sem rodada, diz isso sem markdown', async () => {
