@@ -245,8 +245,14 @@ func printCompleteNextStep(w io.Writer, repoDir, id string, noStamp bool) {
 	if noStamp {
 		fmt.Fprintf(w, "  - record its token cost: cerne cost %s --stamp, before the human accept (F-0309)\n", id)
 	}
-	fmt.Fprintf(w, "  - human accept: cerne feature accept %s (or drag the card to Done)\n", id)
-	if f, err := store.LoadFeature(repoDir, id); err == nil {
+	f, err := store.LoadFeature(repoDir, id)
+	if err == nil && strings.HasPrefix(id, "T-") && f.Parent != "" {
+		// A task rides its parent's accept (T-0007): one human act for all.
+		fmt.Fprintf(w, "  - human accept: %s is accepted along with its parent: cerne feature accept %s\n", id, f.Parent)
+	} else {
+		fmt.Fprintf(w, "  - human accept: cerne feature accept %s (or drag the card to Done)\n", id)
+	}
+	if err == nil {
 		if line := app.DeliveryLine(f, true); line != "" {
 			if f.DeliveryMRURL != "" {
 				line += " — mark it ready for review when CI is green"

@@ -132,6 +132,24 @@ func TestFeatureNewParentCommittedHintsTask(t *testing.T) {
 	}
 }
 
+// TestCompleteTaskNextStepNamesParentAccept (T-0007 crit. 3): a completed
+// task under a parent is accepted along with it, so the Next step sends the
+// human to the parent's accept, not to one accept per task.
+func TestCompleteTaskNextStepNamesParentAccept(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	seedCard(t, repoDir, store.Feature{ID: "E-0001", State: domain.StateInDevelopment}, realDoc("E-0001", "Épico."))
+	seedCard(t, repoDir, store.Feature{ID: "T-0002", Parent: "E-0001", State: domain.StateInDevelopment}, strings.ReplaceAll(exemptTaskSpec, "%s", "T-0002"))
+	writeDoc(t, repoDir, "T-0002", "result.md", "# R\n\n## Resultado\n\nEntregue.\n")
+	commitBackend(t, repoDir)
+	out, err := execCerne(t, "feature", "complete", "T-0002", "--no-stamp", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("complete: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "  - human accept: T-0002 is accepted along with its parent: cerne feature accept E-0001\n") {
+		t.Fatalf("complete output lacks the parent's accept:\n%s", out)
+	}
+}
+
 // TestFeatureApprovePrintsCascade (T-0007 crit. 1): the parent's approve
 // lists the child it approved along and the one it left, with why.
 func TestFeatureApprovePrintsCascade(t *testing.T) {
