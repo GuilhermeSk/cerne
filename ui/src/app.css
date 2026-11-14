@@ -316,7 +316,7 @@ h2 {
    sobrava folga quando ele crescia (F-0241). */
 .backlog-layout {
   display: grid;
-  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(18rem, 30rem) minmax(0, 1fr);
   /* A linha PRECISA ser declarada: `auto` (o padrão) dimensiona pelo conteúdo,
      então a transcrição empurrava a linha, o painel e a página inteira em vez
      de rolar por dentro — o `align-items: stretch` fazia o painel acompanhar a
@@ -351,13 +351,50 @@ h2 {
   overflow-y: auto;
 }
 
+.backlog-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+}
+
+.backlog-count {
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--muted);
+  background: var(--surface-3);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+}
+
+.backlog-note {
+  margin: 0 0 1.25rem;
+  max-width: 36ch;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.backlog-note-error { color: var(--danger); }
+
+.backlog-roster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
 /* F-0256: o card mantém o link inteiro clicável; a ação de refino é um botão
-   discreto abaixo dele, fora do <a>. */
-.backlog-card { display: flex; flex-direction: column; gap: 0.25rem; }
+   discreto abaixo dele, fora do <a>. A lista é uma coluna, não a faixa
+   horizontal do kanban: o card ocupa a largura da coluna. */
+.backlog-card { display: flex; flex-direction: column; gap: 0.3rem; }
+.backlog-card .card { margin-top: 0; }
 
 /* F-0312: painel de ideias — matéria-prima, visualmente fora das candidatas.
-   F-0416: o mesmo painel é a tela #/ideas (h1, a lista na altura da página) e,
-   no Backlog, uma faixa com teto de altura acima das candidatas. */
+   F-0416: o mesmo painel é a tela #/ideas. F-0425: o backlog não monta mais. */
 .ideas-panel { margin: 0 0 1rem; }
 .ideas-panel > h2 + .muted { margin: 0 0 0.5rem; }
 .backlog-list-col .ideas-panel { padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
@@ -438,9 +475,9 @@ h2 {
 
 /* F-0219: sidebar de conversas — <details> nativo cobre o colapsável. */
 .conversation-list {
-  margin-top: 1.25rem;
+  margin-top: 1.75rem;
   border-top: 1px solid var(--border-soft);
-  padding-top: 0.75rem;
+  padding-top: 1rem;
 }
 
 .conversation-list summary {
