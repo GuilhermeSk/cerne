@@ -26,6 +26,14 @@ import (
 // on/off switch ([gates] work_gate) is evaluated here at run time, not at
 // install time, so toggling it needs no reinstall.
 
+// postToolContext is the PostToolUse additionalContext envelope.
+type postToolContext struct {
+	HookSpecificOutput struct {
+		HookEventName     string `json:"hookEventName"`
+		AdditionalContext string `json:"additionalContext"`
+	} `json:"hookSpecificOutput"`
+}
+
 // hookInput is the common envelope of a PreToolUse/PostToolUse hook payload.
 type hookInput struct {
 	SessionID    string          `json:"session_id"`

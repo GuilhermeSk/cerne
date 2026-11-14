@@ -196,7 +196,6 @@ func installCodex(projDir string) []Result {
 			"PreToolUse":   {eventGroup("Edit|Write", "cerne hook work-gate")},
 			"PostToolUse": {
 				eventGroup("Bash", "cerne hook bind-work"),
-				eventGroup("Bash", "cerne hook lifecycle-reminder"),
 				eventGroup("Bash", "cerne hook provenance"),
 			},
 			"Stop": {eventGroup("", "cerne hook stop-check")},

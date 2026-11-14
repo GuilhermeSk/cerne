@@ -31,10 +31,14 @@ func TestInstallCodex(t *testing.T) {
 	if !json.Valid(raw) {
 		t.Fatalf("hooks.json invalid:\n%s", raw)
 	}
-	for _, want := range []string{"SessionStart", "PreToolUse", `Edit|Write`, "cerne hook work-gate", "cerne hook bind-work", "cerne hook lifecycle-reminder", "cerne hook provenance", "cerne hook stop-check", "session-context --format codex"} {
+	for _, want := range []string{"SessionStart", "PreToolUse", `Edit|Write`, "cerne hook work-gate", "cerne hook bind-work", "cerne hook provenance", "cerne hook stop-check", "session-context --format codex"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("hooks.json missing %q:\n%s", want, raw)
 		}
+	}
+	// F-0426: the retired lifecycle reminder is no longer wired.
+	if strings.Contains(string(raw), "lifecycle-reminder") {
+		t.Fatalf("hooks.json still wires the retired lifecycle reminder:\n%s", raw)
 	}
 	env, err := os.ReadFile(filepath.Join(dir, ".codex", "config.toml"))
 	if err != nil || !strings.Contains(string(env), `CERNE_ACTOR = "agent"`) {

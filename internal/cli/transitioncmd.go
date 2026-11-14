@@ -214,7 +214,12 @@ func runTransition(cmd *cobra.Command, dir string, action domain.Action, id, by,
 		printCompleteLearnings(cmd.OutOrStdout(), ctx.repoDir, id)
 	}
 	if action == domain.ActionStart {
-		fmt.Fprintf(cmd.OutOrStdout(), "Next step: when done, fill in the result at content/features/%s/result.md ('cerne result draft %s' scaffolds it) and run 'cerne push' before 'cerne feature complete'.\n", id, id)
+		// The moment-of-action guidance rides stdout, every harness (F-0426).
+		w := cmd.OutOrStdout()
+		fmt.Fprintln(w, "Next step:")
+		fmt.Fprintln(w, "  - before the code: consult the active notes (cerne note list, filter with --facet/--component) and cite the applicable conventions in plan.md")
+		fmt.Fprintln(w, "  - keep progress real-time: tick finished tasks in plan.md, gather evidence in result.md, cerne sync at each milestone")
+		fmt.Fprintf(w, "  - when done: fill in the result at content/features/%s/result.md ('cerne result draft %s' scaffolds it) and run 'cerne push' before 'cerne feature complete'\n", id, id)
 	}
 	// Completing the last alive child of an epic scaffolds the epic's result
 	// (F-0214): point the author at it so the closure isn't left to be noticed
@@ -436,31 +441,32 @@ func runApproveCheck(w io.Writer, ctx projCtx, id string) error {
 // candidacy (a task is born approved) there is nothing to approve: it prints
 // nothing — unless the write staled the approval (F-0318), whose re-approve
 // has the same readiness. An approval with no baseline yet is not staled by a
-// write, so it stays silent too.
-func printApproveReadiness(w io.Writer, repoDir, projDir, id string) {
+// write, so it stays silent too. It returns the impediments it read, for the
+// next-step block that follows a card's birth (F-0426).
+func printApproveReadiness(w io.Writer, repoDir, projDir, id string) []app.ApproveImpediment {
 	if f, err := store.LoadFeature(repoDir, id); err == nil && app.ApprovalBaselineMissing(repoDir, f) {
-		return
+		return nil
 	}
 	imps, err := app.ApproveReadiness(repoDir, projDir, id)
 	if errors.Is(err, domain.ErrInvalidTransition) {
-		return
+		return nil
 	}
 	if err != nil {
 		fmt.Fprintf(w, "Approve readiness: unknown (%v)\n", err)
-		return
+		return nil
 	}
 	if len(imps) == 0 {
 		bar, err := app.AcceptedBar(repoDir, id)
 		if err != nil {
 			fmt.Fprintf(w, "Approve readiness: unknown (%v)\n", err)
-			return
+			return imps
 		}
 		if bar == "" {
 			fmt.Fprintln(w, "Approve readiness: approvable — "+lightModeApprove)
-			return
+			return imps
 		}
 		fmt.Fprintf(w, "Approve readiness: approvable — approving accepts %s\n", bar)
-		return
+		return imps
 	}
 	var codes []string
 	agent := false // anything but an open clarification is the agent's to fix (F-0336)
@@ -476,4 +482,37 @@ func printApproveReadiness(w io.Writer, repoDir, projDir, id string) {
 		verdict = "no hard impediment — open-clarification pending for a human"
 	}
 	fmt.Fprintf(w, "Approve readiness: %s; details: 'cerne feature approve %s --check'\n", verdict, id)
+	return imps
+}
+
+// printNewCardNextStep ends a candidate's birth with the moment-of-action
+// guidance (F-0426): complete the card before any code, check it, ask a human
+// to approve and stop. It rides the command's stdout, the one channel every
+// harness delivers, and names only what the card still lacks: the spec when it
+// was seeded from --context, the tags when an axis is empty, the capability
+// when the check says the project's taxonomy wants one. The approve line names
+// the bar form the agent proposed, in the project's language (F-0418), unless
+// the project runs light mode. Past candidacy (a task is born approved) there
+// is nothing to approve, so it prints nothing.
+func printNewCardNextStep(w io.Writer, ctx projCtx, f store.Feature, seeded bool, imps []app.ApproveImpediment) {
+	if f.State != domain.StateCandidate {
+		return
+	}
+	fmt.Fprintln(w, "Next step:")
+	fmt.Fprintln(w, "  - complete the card now, in this same turn, before any code")
+	if seeded {
+		fmt.Fprintf(w, "  - write the real spec: cerne pull, fill .docs/current/features/%s-*/spec.md, cerne push\n", f.ID)
+	}
+	if len(f.Facets) == 0 || len(f.Components) == 0 {
+		fmt.Fprintf(w, "  - tag it: cerne feature retag %s --facet <f> --component <c>\n", f.ID)
+	}
+	if slices.ContainsFunc(imps, func(im app.ApproveImpediment) bool { return im.Code == app.ImpedimentCapabilityMissing }) {
+		fmt.Fprintf(w, "  - link its capability: cerne feature capability %s C-… (pick one in 'cerne capability list --tree')\n", f.ID)
+	}
+	fmt.Fprintf(w, "  - run 'cerne feature approve %s --check' and fix every impediment it lists except open clarifications, which go to the human with the approve request\n", f.ID)
+	accepts := ""
+	if ctx.cfg.Gates.GauntletEnabled() {
+		accepts = fmt.Sprintf(" (approving accepts the `%s:` line you proposed)", doclang.Display(doclang.BarLabel, store.DocsLanguage(ctx.repoDir)))
+	}
+	fmt.Fprintf(w, "  - human approve: ask a human to run 'cerne feature approve %s'%s and stop — an agent does not approve its own spec and does not implement an unapproved feature\n", f.ID, accepts)
 }

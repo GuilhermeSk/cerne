@@ -325,14 +325,16 @@ func TestIdeaPromoteTitleForAnExactDuplicate(t *testing.T) {
 }
 
 // C13: promote says what comes next, like feature new: the candidate is a
-// stub whose spec and tags are still to be written.
+// stub whose spec and tags are still to be written — the same block (F-0426
+// crit. 2).
 func TestIdeaPromotePrintsNextStep(t *testing.T) {
 	projDir, _, _ := setupProject(t)
 	ideaCmd(t, projDir, "new", "Exportar o kanban em CSV")
 	out := ideaCmd(t, projDir, "promote", "I-0001")
-	if !strings.Contains(out, "Next step: complete the spec and tags of F-0001") {
-		t.Fatalf("promote output lacks the next step:\n%s", out)
-	}
+	wantInOrder(t, stepBlock(out), stepCardNow,
+		stepSpec+"F-0001-*/spec.md, cerne push",
+		stepTags+"F-0001",
+		"cerne feature approve F-0001 --check", stepHuman+"F-0001'", stepNoImpl)
 }
 
 // C20: show prints the idea's own history, read from the raw log — the funnel

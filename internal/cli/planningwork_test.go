@@ -91,6 +91,38 @@ func TestPlanningWorkRealCase(t *testing.T) {
 	})
 }
 
+// TestBatchWorkRealCase (F-0422 crit. 8): the TL's batch work on two features
+// stays active while one of them is live and closes in the commit of the
+// last one's exit, with the work-outlived-feature lint left silent. F-0002 is
+// a candidate: the FSM rejects from candidate only.
+func TestBatchWorkRealCase(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	t.Setenv("USER", "u")
+	t.Setenv("CERNE_SESSION", "")
+	a := newFeature(t, projDir, "Feature A", 1)
+	b := newFeature(t, projDir, "Feature B", 2)
+	writeDoc(t, repoDir, a, "spec.md", realDoc(a, "Problema real descrito aqui."))
+	commitBackend(t, repoDir)
+	mustCerne(t, "feature", "approve", a, "--dir", projDir)
+	mustCerne(t, "work", "start", "Lote A e B — planejamento", "--ref", a+","+b, "--dir", projDir)
+	writeDoc(t, repoDir, a, "plan.md", realDoc(a, "Passo 1: implementar."))
+	commitBackend(t, repoDir)
+
+	t.Setenv("CERNE_ACTOR", "agent")
+	mustCerne(t, "feature", "start", a, "--dir", projDir)
+	writeDoc(t, repoDir, a, "result.md", realDoc(a, "Entregue conforme o plano."))
+	commitBackend(t, repoDir)
+	mustCerne(t, "feature", "complete", a, "--dir", projDir)
+	wantWork(t, repoDir, "W-0001", domain.WorkActive, "") // B still live
+
+	mustCerne(t, "feature", "reject", b, "--reason", "x", "--dir", projDir)
+	wantWork(t, repoDir, "W-0001", domain.WorkDone, "all refs closed (feature implemented, rejected)")
+	out, _ := execCerne(t, "lint", "--dir", projDir)
+	if strings.Contains(out, "W-0001") {
+		t.Fatalf("lint still names W-0001:\n%s", out)
+	}
+}
+
 // mustCerne runs a cerne command and fails the test on error.
 func mustCerne(t *testing.T, args ...string) string {
 	t.Helper()
@@ -123,4 +155,27 @@ func wantWork(t *testing.T, repoDir, id string, state domain.WorkState, note str
 		t.Fatalf("%s = %s %q, want %s %q", id, w.State, w.Note, state, note)
 	}
 	return w
+}
+
+// TestPlanningWorkStartRepeatsFeatureTitle (F-0423 crit. 7): the exact F-0208
+// pickup command, whose title repeats the approved feature's, opens the
+// planning work; the same title without --ref (another agent, a similar
+// registration) is still refused by the F-0147 guard.
+func TestPlanningWorkStartRepeatsFeatureTitle(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	t.Setenv("USER", "u")
+	t.Setenv("CERNE_SESSION", "")
+	id := newFeature(t, projDir, "Painel de custo por feature", 1)
+	writeDoc(t, repoDir, id, "spec.md", realDoc(id, "Problema real descrito aqui."))
+	commitBackend(t, repoDir)
+	mustCerne(t, "feature", "approve", id, "--dir", projDir)
+
+	title := "F-0001: Painel de custo por feature — planejamento"
+	mustCerne(t, "work", "start", title, "--ref", id, "--dir", projDir)
+	wantWork(t, repoDir, "W-0001", domain.WorkActive, "")
+
+	out, err := execCerne(t, "work", "start", title, "--dir", projDir)
+	if err == nil || !strings.Contains(err.Error()+out, "a similar registration already exists") {
+		t.Fatalf("work start without --ref: err = %v, out = %s; want the duplicate refusal", err, out)
+	}
 }
