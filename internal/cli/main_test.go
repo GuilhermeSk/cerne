@@ -20,6 +20,8 @@ import (
 // CLAUDECODE marker: no test reads real transcripts or inherits the agent's
 // harness; cost tests opt in per-case via t.Setenv.
 func TestMain(m *testing.M) {
+	// F-0414: never probe PATH for a subscription CLI (children inherit this).
+	os.Setenv("CERNE_NO_CLI_DETECT", "1")
 	os.Unsetenv("CERNE_ACTOR")
 	dir, err := os.MkdirTemp("", "cerne-config-")
 	if err != nil {

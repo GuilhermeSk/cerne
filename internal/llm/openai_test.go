@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/henriquesakata/cerne/internal/project"
@@ -154,5 +155,94 @@ func TestNewProviderOpenAIRequiresModel(t *testing.T) {
 	prov, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "openai", Model: "gpt-x", KeyEnv: "TEST_LLM_KEY"})
 	if err != nil || prov.(*openaiProvider).baseURL != "https://api.openai.com" {
 		t.Fatalf("NewProvider = %+v, %v, want the OpenAI default base URL", prov, err)
+	}
+}
+
+func TestPresetProvidersHitTheirEndpoints(t *testing.T) {
+	var gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
+		w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	t.Setenv("GEMINI_API_KEY", "gk")
+	t.Setenv("OPENROUTER_API_KEY", "ok")
+	t.Setenv("CERNE_LLM_API_KEY", "")
+	cases := []struct {
+		cfg                project.LLMConfig
+		wantPath, wantAuth string
+	}{
+		{project.LLMConfig{Provider: "gemini", Model: "m", BaseURL: srv.URL + "/v1beta/openai"}, "/v1beta/openai/chat/completions", "Bearer gk"},
+		{project.LLMConfig{Provider: "openrouter", Model: "m", BaseURL: srv.URL + "/api"}, "/api/v1/chat/completions", "Bearer ok"},
+		{project.LLMConfig{Provider: "compatible", Model: "m", BaseURL: srv.URL + "/v1"}, "/v1/chat/completions", ""},
+	}
+	for _, c := range cases {
+		c.cfg.Mode = "byo-key"
+		prov, err := NewProvider(c.cfg)
+		if err != nil {
+			t.Fatalf("%s: %v", c.cfg.Provider, err)
+		}
+		if out, err := prov.Complete(context.Background(), "q"); err != nil || out != "ok" {
+			t.Fatalf("%s: %q %v", c.cfg.Provider, out, err)
+		}
+		if gotPath != c.wantPath || gotAuth != c.wantAuth {
+			t.Errorf("%s: path=%q auth=%q, want %q %q", c.cfg.Provider, gotPath, gotAuth, c.wantPath, c.wantAuth)
+		}
+	}
+}
+
+func TestCompatibleNeedsABaseURLButNoKey(t *testing.T) {
+	t.Setenv("CERNE_LLM_API_KEY", "")
+	_, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "compatible", Model: "m"})
+	if !errors.Is(err, errBaseURLRequired) {
+		t.Fatalf("err = %v, want errBaseURLRequired", err)
+	}
+	if _, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "compatible", Model: "m", BaseURL: "http://localhost:11434/v1"}); err != nil {
+		t.Fatalf("keyless compatible must build: %v", err)
+	}
+	t.Setenv("OPENROUTER_API_KEY", "")
+	if _, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "openrouter", Model: "m"}); !errors.Is(err, ErrAPIKeyMissing) {
+		t.Fatalf("err = %v, want ErrAPIKeyMissing for a keyed preset", err)
+	}
+	if _, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "nope", Model: "m"}); err == nil {
+		t.Fatal("unknown provider must error")
+	}
+}
+
+func TestProviderKeyFromHostFile(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	t.Setenv("CERNE_CONFIG_DIR", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "")
+	if err := project.WriteCredential("OPENROUTER_API_KEY", "file-key"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := project.LLMConfig{Mode: "byo-key", Provider: "openrouter", Model: "m", BaseURL: srv.URL}
+	prov, err := NewProvider(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prov.Complete(context.Background(), "q")
+	if gotAuth != "Bearer file-key" {
+		t.Fatalf("auth = %q, want the file key", gotAuth)
+	}
+	t.Setenv("OPENROUTER_API_KEY", "env-key")
+	prov, _ = NewProvider(cfg)
+	prov.Complete(context.Background(), "q")
+	if gotAuth != "Bearer env-key" {
+		t.Fatalf("auth = %q, want the env var to win", gotAuth)
+	}
+}
+
+func TestMissingKeyErrorNamesVariableNotValue(t *testing.T) {
+	t.Setenv("CERNE_CONFIG_DIR", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "")
+	_, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "openrouter", Model: "m"})
+	if !errors.Is(err, ErrAPIKeyMissing) || !strings.Contains(err.Error(), "OPENROUTER_API_KEY") {
+		t.Fatalf("err = %v", err)
 	}
 }

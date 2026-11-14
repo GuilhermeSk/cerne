@@ -14,6 +14,8 @@ import (
 // it runs the suite with CERNE_ACTOR neutralized and a throwaway config dir,
 // like e2e/main_test.go.
 func TestMain(m *testing.M) {
+	// F-0414: never probe PATH for a subscription CLI (children inherit this).
+	os.Setenv("CERNE_NO_CLI_DETECT", "1")
 	if os.Getenv("CERNE_TEST_HANG") == "1" {
 		time.Sleep(time.Minute)
 		os.Exit(0)

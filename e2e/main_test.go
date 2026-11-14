@@ -20,6 +20,8 @@ import (
 // subscription oracle of chatparity_test.go); with CERNE_TEST_RUN_CLI=1 it is
 // cerne itself — no go build inside a test.
 func TestMain(m *testing.M) {
+	// F-0414: never probe PATH for a subscription CLI (children inherit this).
+	os.Setenv("CERNE_NO_CLI_DETECT", "1")
 	if script := os.Getenv("CERNE_TEST_FAKE_CLAUDE"); script != "" && len(os.Args) > 1 && os.Args[1] == "-p" {
 		os.Exit(fakeClaude(script))
 	}

@@ -1179,7 +1179,7 @@ export async function fetchWikiPage(rel: string): Promise<WikiPage> {
 
 // ---- modo de IA do projeto (case 0019) ----
 
-export type LLMMode = 'delegation' | 'byo-key' | 'claude-cli'
+export type LLMMode = 'delegation' | 'byo-key' | 'claude-cli' | 'codex-cli' | 'gemini-cli'
 
 export async function fetchLLMMode(): Promise<LLMMode> {
   const r = await fetch(`${base()}/config/llm`)
@@ -1230,6 +1230,67 @@ export async function fetchLLMOptions(): Promise<LLMOptions> {
   }
 }
 
+// LLMConfig (F-0414) é o payload completo de GET /api/config/llm que o painel
+// de IA e a linha do Ask leem: modo resolvido e de onde veio, as três CLIs de
+// assinatura, provedor/modelo/URL base e o estado da chave (nunca o valor).
+export type LLMKeyStatus = { env: string; set: boolean; source?: 'env' | 'file'; last4?: string; problem?: string }
+export type LLMConfig = {
+  mode: LLMMode
+  source: 'configured' | 'detected' | 'default'
+  // clis, key and keys describe the serving machine: the remote server omits them.
+  clis?: { name: string; mode: LLMMode; found: boolean }[]
+  provider: string
+  model: string
+  base_url: string
+  key?: LLMKeyStatus
+  keys?: Record<string, LLMKeyStatus>
+  models?: ModelEntry[]
+  default_model?: string
+}
+
+export async function fetchLLMConfig(): Promise<LLMConfig> {
+  const r = await fetch(`${base()}/config/llm`)
+  if (!r.ok) throw new Error(await errorMessage(r))
+  return (await r.json()) as LLMConfig
+}
+
+// testLLM faz uma chamada mínima no modo pedido (ou no resolvido); uma falha
+// de conexão é a resposta ({ok:false,error}), não uma exceção.
+// O corpo pode levar o formulário não salvo (provider, model, base_url e a chave
+// digitada, usada só nessa chamada, em memória no servidor).
+export type LLMTestBody = { mode?: LLMMode; provider?: string; model?: string; base_url?: string; key?: string }
+export async function testLLM(body: LLMTestBody = {}): Promise<{ ok: boolean; error?: string; note?: string }> {
+  const r = await fetch(`${base()}/config/llm/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) throw new Error(await errorMessage(r))
+  return (await r.json()) as { ok: boolean; error?: string; note?: string }
+}
+
+// putLLMKey / deleteLLMKey gravam e removem a chave do provedor no arquivo de
+// credenciais do host; a resposta é o estado da chave, nunca o valor.
+export async function putLLMKey(provider: string, value: string): Promise<LLMKeyStatus> {
+  const r = await fetch(`${base()}/config/llm/key`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, value }),
+  })
+  if (!r.ok) throw new Error(await errorMessage(r))
+  return (await r.json()) as LLMKeyStatus
+}
+
+export async function deleteLLMKey(provider: string): Promise<LLMKeyStatus> {
+  const r = await fetch(`${base()}/config/llm/key`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider }),
+  })
+  if (!r.ok) throw new Error(await errorMessage(r))
+  return (await r.json()) as LLMKeyStatus
+}
+
 // setPreferredProvider (F-0311 critério 16) grava a escolha no catálogo global:
 // sobrevive a reinício e vale para todos os projetos. Só aceita provedor que o
 // projeto já alcança — cadastrar provedor não é desta superfície.
@@ -1240,18 +1301,6 @@ export async function setPreferredProvider(provider: string): Promise<void> {
     body: JSON.stringify({ provider }),
   })
   if (!r.ok) throw new Error(await errorMessage(r))
-}
-
-// setLLMMode grava o modo no .cernerc; o servidor relê a config a cada
-// pergunta, então a troca vale na próxima pergunta (sem reiniciar).
-export async function setLLMMode(mode: LLMMode): Promise<LLMMode> {
-  const r = await fetch(`${base()}/config/llm`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode }),
-  })
-  if (!r.ok) throw new Error(await errorMessage(r))
-  return ((await r.json()) as { mode: LLMMode }).mode
 }
 
 // ---- settings (F-0314/F-0315) ----

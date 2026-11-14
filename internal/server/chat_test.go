@@ -1133,3 +1133,27 @@ func TestChatNoChannelDegrades(t *testing.T) {
 		}
 	}
 }
+
+// F-0414 (M7): codex-cli and gemini-cli have no execution channel, so their
+// chat turns degrade exactly like a no_function_calling endpoint (F-0323 C7):
+// the terminal event is marked no_exec and the UI shows the commands to copy.
+func TestChatSubscriptionCLIsDegradeLikeNoFunctionCalling(t *testing.T) {
+	for _, mode := range []string{"codex-cli", "gemini-cli"} {
+		repoDir, projDir, _ := newGitBackend(t)
+		if err := project.SaveConfig(projDir, project.Config{ProjectID: "proj-chat", Backend: "unused", LLM: project.LLMConfig{Mode: mode}}); err != nil {
+			t.Fatal(err)
+		}
+		fake := &llm.Fake{Reply: "```bash\ncerne status\n```"}
+		orig := newAgentProvider
+		newAgentProvider = func(project.LLMConfig, string, bool) (llm.Provider, error) { return fake, nil }
+		t.Cleanup(func() { newAgentProvider = orig })
+		var got struct {
+			Answered bool `json:"answered"`
+			NoExec   bool `json:"no_exec"`
+		}
+		rec := doJSON(t, New(repoDir, projDir, "proj-chat"), http.MethodPost, "/api/chat", `{"messages":[{"role":"user","content":"oi"}]}`, &got)
+		if rec.Code != http.StatusOK || !got.Answered || !got.NoExec {
+			t.Fatalf("%s: status=%d %+v, want answered no_exec", mode, rec.Code, got)
+		}
+	}
+}

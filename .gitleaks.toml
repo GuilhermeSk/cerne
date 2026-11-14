@@ -18,3 +18,14 @@ targetRules = ["gcp-api-key", "generic-api-key"]
 paths = ['''^ui/dist/''']
 regexTarget = "line"
 regexes = ['''VITE_APP_FIREBASE_CONFIG''']
+
+# A fake key in a credentials-file test (F-0414). It is already in the branch
+# history, which this scan reads whole, so only this exact value, in this one
+# test file, is allowed — any other value there is still reported.
+[[allowlists]]
+description = "Fake API key used as a sentinel in internal/project/credentials_test.go (F-0414)"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^internal/project/credentials_test\.go$''']
+regexTarget = "match"
+regexes = ['''sk-test-SECRET-9876''']

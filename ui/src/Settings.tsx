@@ -17,6 +17,7 @@ import { useT, type Messages } from './i18n'
 import { norm } from './Palette'
 import { FixBlock } from './Harness'
 import { checkProjectName } from './projectName'
+import AISettings, { groupTitleId } from './AISettings'
 
 // Settings (F-0315): the active project's settings, derived from the registry
 // F-0314 serves. The screen knows no key: title, description, type and scopes
@@ -119,6 +120,21 @@ export default function Settings({ group: asked = 'general' }: { group?: Setting
     void reload()
   }, [projects, reload])
   const hintId = useId()
+  // The AI page opens on Host (F-0414): a subscription is personal, and a
+  // Project value would pin it for every teammate. Only the initial value on
+  // entering the group; the selector stays free.
+  const beforeAI = useRef<SettingScope | null>(null)
+  useEffect(() => {
+    if (asked !== 'ai') return
+    setScope((s) => {
+      beforeAI.current = s
+      return 'host'
+    })
+    return () => {
+      if (beforeAI.current) setScope(beforeAI.current)
+      beforeAI.current = null
+    }
+  }, [asked])
 
   // After the commit that removed the pressed control, hand the focus to the
   // row's control — only if it fell to the document (F-0302).
@@ -188,6 +204,47 @@ export default function Settings({ group: asked = 'general' }: { group?: Setting
   const effScope = chooser ? scope : pageScope
   const groups = SETTING_GROUPS.filter((g) => (g === 'general' ? true : all.some((s) => groupOf(s) === g)))
 
+  const aiPage = group === 'ai' && q === ''
+  // The scope selector and the file escape: under the headline on the AI page.
+  const scopeUI = view ? (
+    <>
+    {chooser ? (
+      <div className="settings-scope">
+        <span className="lang-toggle settings-scopes" role="group" aria-label={ts.scopeGroup} aria-describedby={hintId}>
+          {ORDER.map((sc) => (
+            <button
+              key={sc}
+              type="button"
+              className={sc === scope ? 'lang-option active' : 'lang-option'}
+              aria-pressed={sc === scope}
+              title={sc === 'host' ? ts.hostGlobalTitle : undefined}
+              onClick={() => setScope(sc)}
+            >
+              {sc === 'host' ? ts.hostGlobal : ts.scopes[sc]}
+            </button>
+          ))}
+        </span>
+        <p id={hintId} className="settings-hint">
+          {ts.scopeHint[scope]}
+        </p>
+        <p className="settings-hint">{ts.precedence}</p>
+      </div>
+    ) : (
+      pool.length > 0 && (
+        <p className="settings-hint settings-scope-fixed">{ts.scopeFixed[pageScope]}</p>
+      )
+    )}
+    {/* The escape to the raw file (R-0042): where the selected scope lives,
+        for whoever would rather edit it by hand. */}
+    {view.files[effScope] && pool.length > 0 && (
+      <div className="settings-file">
+        <span>{ts.file}</span>
+        <FixBlock command={view.files[effScope]} copyFailed={ts.copyFailed} />
+      </div>
+    )}
+    </>
+  ) : null
+
   // The name block does not hang on the settings registry (critic C13): it
   // shows while that load is pending or failed, at the same place in the tree,
   // so what the user typed survives the load landing.
@@ -249,46 +306,25 @@ export default function Settings({ group: asked = 'general' }: { group?: Setting
           )}
           {view && (
             <header className="settings-group-head">
-              <h2 className="settings-group-title">{q === '' ? ts.groups[group].title : ts.resultsAll}</h2>
+              <h2 id={groupTitleId} className="settings-group-title">{q === '' ? ts.groups[group].title : ts.resultsAll}</h2>
               <p className="settings-hint settings-group-sub">{q === '' ? ts.groups[group].description : ''}</p>
             </header>
           )}
           {group === 'general' && <ProjectName key={activePid} name={name} />}
           {view ? (
           <>
-          {chooser ? (
-            <div className="settings-scope">
-              <span className="lang-toggle settings-scopes" role="group" aria-label={ts.scopeGroup} aria-describedby={hintId}>
-                {ORDER.map((sc) => (
-                  <button
-                    key={sc}
-                    type="button"
-                    className={sc === scope ? 'lang-option active' : 'lang-option'}
-                    aria-pressed={sc === scope}
-                    title={sc === 'host' ? ts.hostGlobalTitle : undefined}
-                    onClick={() => setScope(sc)}
-                  >
-                    {sc === 'host' ? ts.hostGlobal : ts.scopes[sc]}
-                  </button>
-                ))}
-              </span>
-              <p id={hintId} className="settings-hint">
-                {ts.scopeHint[scope]}
-              </p>
-              <p className="settings-hint">{ts.precedence}</p>
-            </div>
+          {aiPage ? (
+            <AISettings
+              key={activePid}
+              settings={all}
+              scope={effScope}
+              onWritten={(v) => setWritten({ base: latest.current.data, view: v })}
+              onScope={setScope}
+            >
+              {scopeUI}
+            </AISettings>
           ) : (
-            pool.length > 0 && (
-              <p className="settings-hint settings-scope-fixed">{ts.scopeFixed[pageScope]}</p>
-            )
-          )}
-          {/* The escape to the raw file (R-0042): where the selected scope lives,
-              for whoever would rather edit it by hand. */}
-          {view.files[effScope] && pool.length > 0 && (
-            <div className="settings-file">
-              <span>{ts.file}</span>
-              <FixBlock command={view.files[effScope]} copyFailed={ts.copyFailed} />
-            </div>
+            scopeUI
           )}
           {(view.errors ?? []).map((e) => (
             <Notice
@@ -298,7 +334,7 @@ export default function Settings({ group: asked = 'general' }: { group?: Setting
               busy={load.retrying}
             />
           ))}
-          {shown.length === 0 ? (
+          {aiPage ? null : shown.length === 0 ? (
             <p className="settings-empty">{ts.noMatch(query.trim())}</p>
           ) : (
             <ul className="settings-list">

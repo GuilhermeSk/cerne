@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 )
 
 // providerOpenAI is the OpenAI-compatible byo-key provider (F-0323 crit. 10):
@@ -17,7 +19,25 @@ const providerOpenAI = "openai"
 
 // errModelRequired: the openai provider has no default model — the Anthropic
 // default would never exist on an OpenAI-compatible endpoint.
-var errModelRequired = errors.New("the openai provider requires an explicit [llm] model")
+var errModelRequired = errors.New("this provider requires an explicit [llm] model")
+
+// errBaseURLRequired: the "compatible" provider has no vendor to default to.
+var errBaseURLRequired = errors.New("the compatible provider requires an [llm] base_url")
+
+// versionedBaseRE matches a base URL whose path already ends in an API version
+// segment (/v1, /v1beta, /v1beta/openai): the endpoint hangs right off it.
+var versionedBaseRE = regexp.MustCompile(`/v\d+[a-z0-9]*(/openai)?$`)
+
+// chatURL is the chat-completions endpoint under base: a base that already ends
+// in a version segment gets /chat/completions, any other gets /v1/chat/completions
+// (the original behavior, kept for api.openai.com and OpenRouter's /api).
+func chatURL(base string) string {
+	base = strings.TrimRight(base, "/")
+	if versionedBaseRE.MatchString(base) {
+		return base + "/chat/completions"
+	}
+	return base + "/v1/chat/completions"
+}
 
 // openaiProvider speaks POST /v1/chat/completions over raw net/http. No
 // Streamer (the chat falls back to its one-event stream, F-0240) and no model
@@ -71,12 +91,14 @@ func (p *openaiProvider) complete(ctx context.Context, body openaiRequest) (fini
 	if err != nil {
 		return "", msg, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/v1/chat/completions", bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatURL(p.baseURL), bytes.NewReader(reqBody))
 	if err != nil {
 		return "", msg, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if p.apiKey != "" { // keyless local endpoints (Ollama, LM Studio)
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return "", msg, err

@@ -200,7 +200,7 @@ func TestSettingsGet(t *testing.T) {
 		}
 	}
 	if _, err := execCerne(t, "settings", "get", "nope.enabled", "--dir", projDir); !errors.Is(err, project.ErrUnknownSetting) ||
-		!strings.Contains(err.Error(), "known: channel.human_name, gates.gauntlet, graph.enabled, lint.cli_output_language, lint.stale_decision_days, mindmap.enabled, wiki.enabled") {
+		!strings.Contains(err.Error(), "known: channel.human_name, gates.gauntlet, graph.enabled, lint.cli_output_language, lint.stale_decision_days, llm.base_url, llm.mode, llm.model, llm.provider, mindmap.enabled, wiki.enabled") {
 		t.Errorf("unknown key: err = %v, want ErrUnknownSetting listing the known keys", err)
 	}
 }
@@ -457,5 +457,30 @@ func TestSettingsGauntletRefusesAgent(t *testing.T) {
 	}
 	if out, err := execCerne(t, "settings", "unset", "gates.gauntlet", "--scope", "project", "--dir", projDir); err != nil {
 		t.Errorf("human unset: %v\n%s", err, out)
+	}
+}
+
+// TestSettingsLLMModeHostScopeAndDetected: llm.mode set in the host scope
+// reaches a project with no [llm] (criterion 10); unset, get shows the CLI
+// found on PATH with the origin "detected" (criterion 2).
+func TestSettingsLLMModeHostScopeAndDetected(t *testing.T) {
+	projDir, _ := settingsProject(t, "")
+	orig := project.DetectSubscriptionCLI
+	t.Cleanup(func() { project.DetectSubscriptionCLI = orig })
+	project.DetectSubscriptionCLI = func() string { return "codex" }
+
+	out, err := execCerne(t, "settings", "get", "llm.mode", "--show-origin", "--dir", projDir)
+	if err != nil || out != "detected\tcodex-cli\n" {
+		t.Fatalf("get without a stored value = %q (%v), want detected\\tcodex-cli", out, err)
+	}
+	if _, err := execCerne(t, "settings", "set", "llm.mode", "gemini-cli", "--scope", "host", "--dir", projDir); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := project.LoadConfig(projDir)
+	if err != nil || cfg.LLM.Mode != "gemini-cli" {
+		t.Fatalf("LoadConfig after set --scope host: mode %q (%v)", cfg.LLM.Mode, err)
+	}
+	if out, _ := execCerne(t, "settings", "get", "llm.mode", "--show-scope", "--dir", projDir); out != "host\tgemini-cli\n" {
+		t.Errorf("get = %q", out)
 	}
 }

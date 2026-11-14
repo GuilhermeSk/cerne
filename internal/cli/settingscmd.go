@@ -116,7 +116,7 @@ func newSettingsGetCmd(dir *string) *cobra.Command {
 					fmt.Fprintf(out, "%s\t", scope)
 				}
 				if showOrigin {
-					origin := project.OriginDefault
+					origin := scope // "default" or "detected" when no file holds the value
 					if f, ok := view.Files[scope]; ok {
 						origin = "file:" + f
 					}
@@ -187,7 +187,7 @@ func newSettingsUnsetCmd(dir *string) *cobra.Command {
 }
 
 // scopeRank orders the origins by precedence.
-var scopeRank = map[string]int{project.ScopeProject: 0, project.ScopeHost: 1, project.OriginDefault: 2}
+var scopeRank = map[string]int{project.ScopeProject: 0, project.ScopeHost: 1, project.OriginDefault: 2, project.OriginDetected: 2}
 
 // writtenSetting re-resolves id after a write that landed and returns it with
 // the file behind scope, plus warn, which prints what the re-read tripped on
