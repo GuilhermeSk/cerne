@@ -107,6 +107,17 @@ func TestLintInheritedBarChargesParent(t *testing.T) {
 		t.Fatalf("the parent's recorded round covers both, got %+v", got)
 	}
 
+	// An abandoned task (rejected, superseded) inherits nothing: the parent
+	// is read by its own result, as before.
+	for _, s := range []domain.FeatureState{domain.StateRejected, domain.StateSuperseded} {
+		dir := t.TempDir()
+		e := seedLintFeature(t, dir, store.Feature{ID: "E-0001", State: domain.StateImplemented}, taskNamedSpec, resultExemption)
+		tk := seedLintFeature(t, dir, store.Feature{ID: "T-0002", Parent: "E-0001", State: s}, inherited, resultNoGauntlet)
+		if got := resultGauntletFindings(dir, []store.Feature{e, tk}, completed("E-0001")); len(got) != 0 {
+			t.Fatalf("a %s inheriting task charged its parent: %+v", s, got)
+		}
+	}
+
 	// A parent naming no bar of its own: the inheritance is no bar at all.
 	dir = t.TempDir()
 	e = seedLintFeature(t, dir, store.Feature{ID: "E-0001", State: domain.StateImplemented}, taskExemptSpec, resultNoGauntlet)

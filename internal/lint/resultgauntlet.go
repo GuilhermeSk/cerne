@@ -138,6 +138,9 @@ func specBarRule(repoDir string, f store.Feature, features []store.Feature) (ski
 		if c.Parent != f.ID || !strings.HasPrefix(c.ID, "T-") {
 			continue // only the children's specs are read
 		}
+		if c.State == domain.StateRejected || c.State == domain.StateSuperseded {
+			continue // an abandoned task inherits nothing
+		}
 		if parent, ok := doccheck.BarInherited(specOf(repoDir, c.ID)); ok && parent == f.ID {
 			if !doccheck.BarNamed(spec) {
 				return false, false, fmt.Sprintf("task %s inherits its bar, but its spec names no bar of its own", c.ID)
