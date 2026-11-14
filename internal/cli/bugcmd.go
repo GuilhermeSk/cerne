@@ -30,7 +30,7 @@ func newBugCmd() *cobra.Command {
 }
 
 func newBugNewCmd(dir *string) *cobra.Command {
-	var module, fixes, facet, component, file, context, owner, priority, onBehalf string
+	var module, fixes, facet, component, file, context, steps, expected, owner, priority, onBehalf string
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "new <title>",
@@ -41,12 +41,12 @@ func newBugNewCmd(dir *string) *cobra.Command {
 			"born approved: start it right away. A bug an agent found by itself (no --on-behalf) is born " +
 			"candidate and waits for a human approve. Completing needs a real result.md; accept stays human. " +
 			"--fixes links the delivered feature and inherits its facets, components and capabilities.",
-		Example: "  cerne bug new \"<what breaks>\" --context \"<what happens, where>\" --on-behalf \"<the human's words>\"\n" +
+		Example: "  cerne bug new \"<what breaks>\" --context \"<what happens, where>\" --steps \"<numbered steps>\" --expected \"<should happen × happened>\" --on-behalf \"<the human's words>\"\n" +
 			"  cerne bug new \"<what breaks>\" --file report.md --fixes F-NNNN\n" +
 			"  cerne feature start B-NNNN     # no plan gate, no approve when the report is human",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBugNew(cmd, *dir, args[0], module, fixes, facet, component, file, context, force, owner, priority, onBehalf)
+			return runBugNew(cmd, *dir, args[0], module, fixes, facet, component, file, context, steps, expected, force, owner, priority, onBehalf)
 		},
 	}
 	cmd.Flags().StringVar(&module, "module", "", "module the bug belongs to")
@@ -55,6 +55,8 @@ func newBugNewCmd(dir *string) *cobra.Command {
 	cmd.Flags().StringVar(&component, "component", "", "components (CSV; subsystem/tool, e.g. gitback,materialize)")
 	cmd.Flags().StringVar(&file, "file", "", "file with the full report (defaults to piped stdin)")
 	cmd.Flags().StringVar(&context, "context", "", "what happens and where (1-3 sentences), seeded into the Context section")
+	cmd.Flags().StringVar(&steps, "steps", "", "numbered steps to the defect, seeded into the Steps to reproduce section")
+	cmd.Flags().StringVar(&expected, "expected", "", "what should happen × what happened, seeded into the Expected × actual section")
 	cmd.Flags().BoolVar(&force, "force", false, "bypass the duplicate-registration guard (F-0147) for a consciously distinct problem")
 	cmd.Flags().StringVar(&owner, "owner", "", "responsible handle (free text, F-0204)")
 	cmd.Flags().StringVar(&priority, "priority", "", "priority (closed set: p0,p1,p2,p3, F-0204)")
@@ -62,7 +64,7 @@ func newBugNewCmd(dir *string) *cobra.Command {
 	return cmd
 }
 
-func runBugNew(cmd *cobra.Command, dir, title, module, fixes, facet, component, file, context string, force bool, owner, priority, onBehalf string) error {
+func runBugNew(cmd *cobra.Command, dir, title, module, fixes, facet, component, file, context, steps, expected string, force bool, owner, priority, onBehalf string) error {
 	if cmd.Flags().Changed("on-behalf") && strings.TrimSpace(onBehalf) == "" {
 		return app.ErrOnBehalfEmpty
 	}
@@ -74,6 +76,9 @@ func runBugNew(cmd *cobra.Command, dir, title, module, fixes, facet, component, 
 	if hasBody && hasContext {
 		return fmt.Errorf("--file/stdin and --context are mutually exclusive: the full report already carries the context")
 	}
+	if hasBody && (strings.TrimSpace(steps) != "" || strings.TrimSpace(expected) != "") {
+		return fmt.Errorf("--file/stdin and --steps/--expected are mutually exclusive: the full report already carries them")
+	}
 	if !hasBody && !hasContext {
 		return errFeatureContextRequired
 	}
@@ -84,7 +89,7 @@ func runBugNew(cmd *cobra.Command, dir, title, module, fixes, facet, component, 
 	lang := store.DocsLanguage(ctx.repoDir)
 	specBody := body
 	if hasContext {
-		specBody = spectmpl.BugBodyIn(lang, context, "", "")
+		specBody = spectmpl.BugBodyIn(lang, context, steps, expected)
 	} else if _, err := doccheck.SpecBarIn([]byte(body), lang); err != nil {
 		// A born-approved report never meets the approve gate: give it the
 		// regression-test exemption unless the file brought a valid bar.

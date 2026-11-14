@@ -137,3 +137,49 @@ func TestBugNewRequiresContext(t *testing.T) {
 		t.Fatal("want the context gate for bug new")
 	}
 }
+
+// B-0003: the agent route fills every report section from flags, like the UI
+// form; an omitted optional field keeps its template comment; --steps and
+// --expected cannot ride along with --file.
+func TestBugNewStepsExpectedFlags(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "")
+	projDir, _, repoDir := setupProject(t)
+	spec := func(id string) string {
+		raw, err := os.ReadFile(app.FeatureDocPath(repoDir, id, "spec.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	if out, err := execCerne(t, "bug", "new", "Tudo", "--context", "ctx", "--steps", "1. abrir", "--expected", "salva × falha", "--dir", projDir); err != nil {
+		t.Fatalf("bug new: %v\n%s", err, out)
+	}
+	for _, want := range []string{"## Contexto\nctx\n", "## Como reproduzir\n1. abrir\n", "## Esperado × obtido\nsalva × falha\n", "Barra: não aplicável (correção com teste de regressão)"} {
+		if !strings.Contains(spec("B-0001"), want) {
+			t.Errorf("spec missing %q:\n%s", want, spec("B-0001"))
+		}
+	}
+	if out, err := execCerne(t, "bug", "new", "So passos", "--context", "ctx", "--steps", "1. abrir", "--dir", projDir); err != nil {
+		t.Fatalf("bug new: %v\n%s", err, out)
+	}
+	if s := spec("B-0002"); !strings.Contains(s, "## Como reproduzir\n1. abrir\n") || !strings.Contains(s, "## Esperado × obtido\n<!--") {
+		t.Errorf("only --steps:\n%s", s)
+	}
+	if out, err := execCerne(t, "bug", "new", "So esperado", "--context", "ctx", "--expected", "deveria salvar", "--dir", projDir); err != nil {
+		t.Fatalf("bug new: %v\n%s", err, out)
+	}
+	if s := spec("B-0003"); !strings.Contains(s, "## Esperado × obtido\ndeveria salvar\n") || !strings.Contains(s, "## Como reproduzir\n<!--") {
+		t.Errorf("only --expected:\n%s", s)
+	}
+	f := filepath.Join(t.TempDir(), "r.md")
+	if err := os.WriteFile(f, []byte("## Contexto\nx\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := execCerne(t, "bug", "new", "Conflito", "--file", f, "--steps", "s", "--dir", projDir)
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("--file with --steps: err = %v, out = %s; want mutually exclusive", err, out)
+	}
+	if _, lerr := store.LoadFeature(repoDir, "B-0004"); lerr == nil {
+		t.Error("a refused bug new must not write a card")
+	}
+}
