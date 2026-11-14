@@ -207,11 +207,11 @@ cerne has no hosted service. There is no account to create and nothing phones ho
 |---|---|---|
 | Specs, plans, results, decisions, the event log | The backend git repository you chose: a folder on your machine, a git server you host, or a private repository on a hosting service | Always. It is the only place cerne stores your documentation |
 | `.docs/` and the search index | Your disk | Always. Both are rebuilt from the backend |
-| Prompts for `cerne ask`, drafts and the dashboard chat | By default, nowhere: cerne hands the prompt to the agent you already run. With `[llm]` configured, to the model provider you set, using your key | Only if you configure it |
+| Prompts for `cerne ask`, drafts and the dashboard chat | By default, to the model behind the agent subscription you already have: if Claude Code, Codex CLI or Gemini CLI is installed, cerne calls the first one it finds (in that order), so the prompt goes to Anthropic, OpenAI or Google under that subscription. With an API key or a gateway set in Settings › AI, to that provider instead. With `llm.mode` set to `delegation`, nowhere: the agent you already run answers | When you use those features. Settings › AI shows which one is in use and where that choice came from |
 | Traces | An OTLP endpoint you set | Off by default. Metrics stay on the machine |
 | Webhook notifications | A URL you set | Off by default |
 
-Two things cerne does not change. Your AI agent still sends what it reads to its model provider, and a backend hosted on GitHub or GitLab lives on GitHub or GitLab. If nothing may leave your network, point cerne at a git server you host and use an agent whose model runs where you allow: cerne itself adds no third party.
+Two things cerne does not change. Your AI agent still sends what it reads to its model provider, and a backend hosted on GitHub or GitLab lives on GitHub or GitLab. If nothing may leave your network, point cerne at a git server you host, set `llm.mode` to `delegation` (`cerne settings set llm.mode delegation --scope host`) or to a local model through Settings › AI, and use an agent whose model runs where you allow: cerne itself adds no third party.
 
 ## What you get
 
