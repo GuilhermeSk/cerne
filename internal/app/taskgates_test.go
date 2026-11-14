@@ -345,6 +345,19 @@ func TestStartTaskAcceptsInheritedBar(t *testing.T) {
 			if out.To != domain.StateInDevelopment {
 				t.Fatalf("state = %s, want in_development", out.To)
 			}
+			// The result scaffold carries the task's bar line, inside a guide
+			// comment: still a stub to the complete gate.
+			res, err := os.ReadFile(FeatureDocPath(repoDir, "T-0001", "result.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			line, _, _ := strings.Cut(bar, "\n")
+			if !strings.Contains(string(res), line+" -->") {
+				t.Errorf("result scaffold lacks the spec's bar line %q:\n%s", line, res)
+			}
+			if docs, _ := FeatureDocSet(repoDir, "T-0001"); docs.HasResult {
+				t.Error("the bar note made the scaffold read as a written result")
+			}
 		})
 	}
 }

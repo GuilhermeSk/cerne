@@ -1243,7 +1243,13 @@ func writeResultStub(repoDir, id, title string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	content := "---\ncerne_id: " + id + "\n---\n\n" + restmpl.StubIn(store.DocsLanguage(repoDir), title)
+	l := store.DocsLanguage(repoDir)
+	content := "---\ncerne_id: " + id + "\n---\n\n" + restmpl.StubIn(l, title)
+	if spec, err := os.ReadFile(FeatureDocPath(repoDir, id, "spec.md")); err == nil && isTask(id) {
+		if bar, err := doccheck.SpecBar(spec); err == nil {
+			content += restmpl.TaskBarNote(l, bar) // the record a task owes follows its spec (T-0007)
+		}
+	}
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
