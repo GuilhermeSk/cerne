@@ -58,6 +58,33 @@ func TestExemption(t *testing.T) {
 	}
 }
 
+// TestInheritance (T-0007 crit. 4): the inherited bar form names the parent's
+// id, in either language; a value that opens as the form with no id is still
+// the form (ok), so the bar reader can refuse it as malformed.
+func TestInheritance(t *testing.T) {
+	tests := []struct {
+		value, id string
+		lang      Lang
+		ok        bool
+	}{
+		{"herdada de E-0001", "E-0001", PT, true},
+		{"herdado de f-0012 (a rodada do épico cobre esta task)", "F-0012", PT, true},
+		{"Herdada de `E-0001`", "E-0001", PT, true},
+		{"inherited from E-0001", "E-0001", EN, true},
+		{"Inherited from **E-0002**.", "E-0002", EN, true},
+		{"herdada de", "", PT, true},
+		{"inherited from the parent", "", EN, true},
+		{"Herdade do Esporão — degustação cega", "", "", false}, // a named reference
+		{"inheritance diagram of internal/x.go", "", "", false},
+	}
+	for _, tt := range tests {
+		id, lang, ok := Inheritance(tt.value)
+		if ok != tt.ok || (ok && (id != tt.id || lang != tt.lang)) {
+			t.Errorf("Inheritance(%q) = %q, %q, %v; want %q, %q, %v", tt.value, id, lang, ok, tt.id, tt.lang, tt.ok)
+		}
+	}
+}
+
 func TestRoundAnchor(t *testing.T) {
 	for line, want := range map[string]int{
 		"Rodada 1 — vitória": 1, "Rodada 6 de novo": 6, // loose
