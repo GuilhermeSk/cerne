@@ -14,6 +14,8 @@ func TestCerneAuthoringTeachesBugRoute(t *testing.T) {
 	for _, sub := range []string{
 		"cerne bug new",
 		"--on-behalf",
+		"--steps",
+		"--expected",
 		"cerne feature start B-NNNN",
 		"without waiting for an approve",
 		"you found it yourself",
