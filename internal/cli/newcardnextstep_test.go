@@ -213,3 +213,41 @@ func TestFeatureStartNextStep(t *testing.T) {
 		"keep progress real-time: tick finished tasks in plan.md, gather evidence in result.md, cerne sync at each milestone",
 		"when done: fill in the result at content/features/F-0001/result.md")
 }
+
+// Criterion 8, end to end with agent hooks off (a hookless harness): the
+// three moments each print their block through the CLI alone.
+func TestLifecycleGuidanceWithoutHooks(t *testing.T) {
+	t.Setenv("CERNE_NO_AGENT_HOOKS", "1")
+	projDir, _, repoDir := setupProject(t)
+
+	out, err := cardNew(t, "Exportar o kanban em CSV", "--context", "o time pede", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("feature new --context: %v\n%s", err, out)
+	}
+	wantInOrder(t, stepBlock(out), stepCardNow, stepSpec+"F-0001-", stepTags+"F-0001", stepHuman+"F-0001'")
+
+	spec := filepath.Join(t.TempDir(), "spec.md")
+	if err := os.WriteFile(spec, []byte(strings.SplitN(realDoc("F-0002", "Importar a planilha de custos."), "---\n", 3)[2]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err = cardNew(t, "Importar planilha de custos", "--file", spec, "--facet", "code", "--component", "cli", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("feature new --file: %v\n%s", err, out)
+	}
+	block := stepBlock(out)
+	wantInOrder(t, block, stepCardNow, stepHuman+"F-0002'")
+	if strings.Contains(block, stepSpec) || strings.Contains(block, stepTags) {
+		t.Fatalf("complete card born with spec and tags, yet the block asks for them:\n%s", block)
+	}
+
+	if out, err := execCerne(t, "feature", "approve", "F-0002", "--dir", projDir); err != nil {
+		t.Fatalf("approve: %v\n%s", err, out)
+	}
+	writeDoc(t, repoDir, "F-0002", "plan.md", realDoc("F-0002", "Passo 1: implementar."))
+	commitBackend(t, repoDir)
+	out, _, err = execCerneSplit(t, "feature", "start", "F-0002", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("start: %v\n%s", err, out)
+	}
+	wantInOrder(t, stepBlock(out), "consult the active notes", "cerne sync at each milestone", "content/features/F-0002/result.md")
+}

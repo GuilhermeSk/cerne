@@ -31,6 +31,9 @@ A `cerne ui` process started before `go install` keeps serving the embedded UI a
 ## Q: How do I start working on a feature and finish it?
 `cerne feature new "<title>"` registers the candidate, `cerne pull` materializes `.docs/`, fill the spec and plan, `cerne push`, then the human runs `cerne feature approve <F-id>`. The builder runs `cerne feature start <F-id>`, writes the result, `cerne push`, then `cerne feature complete <F-id>`. `cerne feature accept <F-id>` is the human validation step that makes it done.
 
+## Q: What do I do right after feature new? What is the Next step block?
+`cerne feature new`, `cerne epic new` and `cerne idea promote` end with a Next step block that lists what the candidate still lacks, in order: the real spec (when it was seeded from `--context`), the tags, the capability (when the project curates a taxonomy), then `cerne feature approve <F-id> --check`, and last the human approve, where an agent stops without implementing. `cerne feature start` ends with its own block: consult the active notes with `cerne note list` before the code, keep `plan.md` and `result.md` current, `cerne sync` at each milestone. The blocks are the command's own output, so every harness (Claude Code, Cursor, Codex, Gemini) gets the same text, with or without hooks.
+
 ## Q: How do I read the project state without loading everything?
 `cerne brief` is the cheapest map (id, state, title). `cerne status --active` shows only active work, `cerne next` the next action per feature plus documentation debts. Read one entity with `cerne show <id>`, search by subject with `cerne search "<query>"`.
 
