@@ -23,6 +23,9 @@ const (
 	ScopeProject  = "project"
 	ScopeHost     = "host"
 	OriginDefault = "default"
+	// OriginDetected: no scope stores the value and a dynamic default found one
+	// (llm.mode: the subscription CLI on PATH, F-0414).
+	OriginDetected = "detected"
 )
 
 const hostSettingsFilename = "settings.toml"
@@ -62,6 +65,13 @@ type Setting struct {
 	// actor (F-0392). The server only serializes it, for the UI to guard the
 	// key; the CLI still enforces it.
 	HumanOnly bool `json:"human_only,omitempty"`
+	// MaxLen is the longest string the key accepts, in characters; 0 = the
+	// default maxSettingString (a URL needs more than a display name).
+	MaxLen int `json:"-"`
+	// DynamicDefault, when set, supplies the value of a key no scope stores:
+	// "" keeps Default, anything else becomes the value with OriginDetected.
+	// The registry does not know what it detects.
+	DynamicDefault func() string `json:"-"`
 }
 
 // settingGroups are the subject groups in display order (F-0413).
@@ -135,6 +145,34 @@ var settingsRegistry = []Setting{
 		ID: "lint.stale_decision_days", Group: "process", Title: "Stale decision window", Type: "int", Default: int64(180),
 		Scopes: []string{ScopeProject}, TopLevel: "stale_decision_days",
 		Description: "Days an active decision may go unreviewed, cited only by rejected or superseded features and by nothing live, before lint flags it as stale-decision. In .cernerc, [lint] stale_decision_days wins over a top-level stale_decision_days.",
+	},
+	{
+		ID: "llm.base_url", Group: "ai", Title: "API base URL", Type: "string", Default: "", MaxLen: 200,
+		Scopes:      []string{ScopeProject, ScopeHost},
+		Description: "The API endpoint for the OpenAI-compatible providers, for example a local Ollama (http://localhost:11434/v1). Required for the compatible provider; empty uses the provider's own address.",
+	},
+	{
+		ID: "llm.mode", Group: "ai", Title: "AI agent", Type: "string", Default: "delegation",
+		Enum:   []string{"claude-cli", "codex-cli", "gemini-cli", "byo-key", "delegation"},
+		Scopes: []string{ScopeProject, ScopeHost},
+		DynamicDefault: func() string {
+			if cli := DetectSubscriptionCLI(); cli != "" {
+				return cli + "-cli"
+			}
+			return ""
+		},
+		Description: "How cerne reaches a model for ask, compile and the chat. A subscription CLI (claude-cli, codex-cli, gemini-cli) uses the plan you already pay for; byo-key calls a provider's API with a key; delegation hands the prompt to the agent already running. Unset, it follows the subscription CLI found on PATH.",
+	},
+	{
+		ID: "llm.model", Group: "ai", Title: "Model", Type: "string", Default: "",
+		Scopes:      []string{ScopeProject, ScopeHost},
+		Description: "The model id sent to the CLI or the API. Empty uses the CLI's own default, or the catalog default for the anthropic provider.",
+	},
+	{
+		ID: "llm.provider", Group: "ai", Title: "API provider", Type: "string", Default: "anthropic",
+		Enum:        []string{"anthropic", "openai", "gemini", "openrouter", "compatible"},
+		Scopes:      []string{ScopeProject, ScopeHost},
+		Description: "The provider behind byo-key. gemini and openrouter use their own base URL and key variable; compatible takes any OpenAI-style endpoint through the API base URL, with an optional key.",
 	},
 	{
 		ID: "mindmap.enabled", Group: "interface", Title: "Mindmap", Type: "bool", Default: true,
@@ -216,6 +254,11 @@ func ResolveSettings(projDir string) SettingsView {
 	}
 	for _, s := range settingsRegistry {
 		r := ResolvedSetting{Setting: s, Value: s.Default, Origin: OriginDefault}
+		if s.DynamicDefault != nil {
+			if v := s.DynamicDefault(); v != "" {
+				r.Value, r.Origin = v, OriginDetected
+			}
+		}
 		table, key, _ := strings.Cut(s.ID, ".")
 		for _, scope := range scopes {
 			tbl, _ := layers[scope][table].(map[string]any)
@@ -245,7 +288,7 @@ func ResolveSettings(projDir string) SettingsView {
 				r.Stored = map[string]any{}
 			}
 			r.Stored[scope] = v
-			if r.Origin == OriginDefault {
+			if r.Origin == OriginDefault || r.Origin == OriginDetected {
 				r.Value, r.Origin = v, scope
 			}
 		}
@@ -309,6 +352,13 @@ func StaleDecisionDays(projDir string) int {
 // maxSettingString bounds a string setting (a display name, F-0325).
 const maxSettingString = 64
 
+func maxLen(s Setting) int {
+	if s.MaxLen > 0 {
+		return s.MaxLen
+	}
+	return maxSettingString
+}
+
 // SetSetting writes the CLI literal raw as id's value in scope: "true"/"false"
 // for a bool key, the text itself for a string key. See SetSettingValue.
 func SetSetting(projDir, id, scope, raw string) error {
@@ -348,8 +398,8 @@ func SetSettingValue(projDir, id, scope string, v any) error {
 	if !hasSettingType(s, v) {
 		return fmt.Errorf("%s: %w %v: want %s", id, ErrInvalidSettingValue, v, settingWant(s))
 	}
-	if str, ok := v.(string); ok && (strings.TrimSpace(str) == "" || strings.ContainsAny(str, "\r\n") || utf8.RuneCountInString(str) > maxSettingString) {
-		return fmt.Errorf("%s: %w %q: want one non-blank line of at most %d characters", id, ErrInvalidSettingValue, str, maxSettingString)
+	if str, ok := v.(string); ok && (strings.TrimSpace(str) == "" || strings.ContainsAny(str, "\r\n") || utf8.RuneCountInString(str) > maxLen(s)) {
+		return fmt.Errorf("%s: %w %q: want one non-blank line of at most %d characters", id, ErrInvalidSettingValue, str, maxLen(s))
 	}
 	path, err := settingsFile(projDir, scope)
 	if err != nil {

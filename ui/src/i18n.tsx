@@ -1233,6 +1233,18 @@ const ptBR = {
       'Stale decision window': 'Prazo de decisão parada',
       'Days an active decision may go unreviewed, cited only by rejected or superseded features and by nothing live, before lint flags it as stale-decision. In .cernerc, [lint] stale_decision_days wins over a top-level stale_decision_days.':
         'Dias que uma decisão ativa pode ficar sem revisão, citada só por features rejeitadas ou substituídas e por nada vivo, antes de o lint acusá-la como stale-decision. No .cernerc, [lint] stale_decision_days vence um stale_decision_days de topo.',
+      'API base URL': 'URL base da API',
+      "The API endpoint for the OpenAI-compatible providers, for example a local Ollama (http://localhost:11434/v1). Required for the compatible provider; empty uses the provider's own address.":
+        'O endereço da API dos provedores compatíveis com a OpenAI, por exemplo um Ollama local (http://localhost:11434/v1). Obrigatório no provedor compatível; vazio usa o endereço do próprio provedor.',
+      'AI agent': 'Agente de IA',
+      "How cerne reaches a model for ask, compile and the chat. A subscription CLI (claude-cli, codex-cli, gemini-cli) uses the plan you already pay for; byo-key calls a provider's API with a key; delegation hands the prompt to the agent already running. Unset, it follows the subscription CLI found on PATH.":
+        'Como o cerne chega a um modelo para o ask, o compile e o chat. Um CLI de assinatura (claude-cli, codex-cli, gemini-cli) usa o plano que você já paga; byo-key chama a API de um provedor com uma chave; delegation entrega o prompt ao agente que já está rodando. Sem valor, segue o CLI de assinatura encontrado no PATH.',
+      'Model': 'Modelo',
+      "The model id sent to the CLI or the API. Empty uses the CLI's own default, or the catalog default for the anthropic provider.":
+        'O id do modelo enviado ao CLI ou à API. Vazio usa o padrão do próprio CLI, ou o padrão do catálogo no provedor anthropic.',
+      'API provider': 'Provedor da API',
+      "The provider behind byo-key. gemini and openrouter use their own base URL and key variable; compatible takes any OpenAI-style endpoint through the API base URL, with an optional key.":
+        'O provedor por trás do byo-key. gemini e openrouter usam o próprio endereço e a própria variável de chave; compatible aceita qualquer endpoint no estilo OpenAI pela URL base da API, com chave opcional.',
       'Mindmap': 'Mapa mental',
       'Shows the Mindmap tab in the UI. Off hides it.': 'Mostra a aba Mapa mental na UI. Desligado a esconde.',
       'Wiki': 'Wiki',

@@ -550,7 +550,29 @@ func readConfig(dir string) (Config, string, error) {
 	if err := c.Delivery.validate(); err != nil {
 		return Config{}, "", fmt.Errorf("%s: %w", path, err)
 	}
+	fillLLMFromHost(&c.LLM)
 	return c, dir, nil
+}
+
+// fillLLMFromHost completes each empty [llm] field of a project from the host
+// settings.toml [llm] (F-0414): the AI agent chosen once for the machine reaches
+// every caller of LoadConfig, and a project value always wins. A host value
+// that is unreadable or invalid for its key is skipped (fail open).
+func fillLLMFromHost(l *LLMConfig) {
+	path, err := settingsFile("", ScopeHost)
+	if err != nil {
+		return
+	}
+	layer, err := readTOMLFile(path)
+	if err != nil {
+		return
+	}
+	tbl, _ := layer["llm"].(map[string]any)
+	for field, dst := range map[string]*string{"mode": &l.Mode, "provider": &l.Provider, "model": &l.Model, "base_url": &l.BaseURL} {
+		if v, ok := tbl[field]; ok && *dst == "" && hasSettingType(declared("llm."+field), v) {
+			*dst = v.(string)
+		}
+	}
 }
 
 // noProjectAtError is ErrNoProject for an explicit directory (F-0354); its text
