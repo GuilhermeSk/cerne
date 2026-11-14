@@ -32,8 +32,9 @@ func newImportCmd() *cobra.Command {
 		Short: "Import an existing documentation tree into the backend",
 		Long: "Imports an existing documentation tree. Without flags, it uses the " +
 			"Hub convention (deterministic). With --agent, it does an AI-assisted generic import of " +
-			"any structure: it emits a mapping prompt (delegation mode) or generates the plan " +
-			"(byo-key); then 'cerne import --agent --ingest' validates and applies it (--yes).",
+			"any structure: with a callable LLM (a subscription CLI or an API key) it drafts the mapping " +
+			"plan itself; in delegation mode it emits a mapping prompt for the agent you already run; " +
+			"then 'cerne import --agent --ingest' validates and applies it (--yes).",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runImport(cmd, dir, root, yes, agent, ingest)
@@ -356,7 +357,8 @@ func runImportAgent(cmd *cobra.Command, ctx projCtx, root string) error {
 		return nil
 	}
 
-	// delegation (default): emit the prompt for the host agent to fill.
+	// delegation (the floor when no subscription CLI is found, F-0414): emit the
+	// prompt for the host agent to fill.
 	promptPath := filepath.Join(ctx.projDir, filepath.FromSlash(agentPromptRel))
 	if err := os.WriteFile(promptPath, []byte(prompt), 0o644); err != nil {
 		return err
