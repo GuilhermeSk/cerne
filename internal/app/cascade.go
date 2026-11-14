@@ -88,6 +88,43 @@ func cascadeApprove(repoDir, projDir, parentID string, gauntletOn bool) (cascade
 	return out, nil
 }
 
+// cascadeAccept carries a parent's accept to its implemented tasks (T-0007
+// crit. 3), inside the parent's critical section: a task never had a gate of
+// its own, so the human who accepts the parent accepts it — its event carries
+// cascade_from, and its pendings and ideas follow it like a manual accept.
+// An F- child had its own approve and keeps its own accept; an actor the
+// accept's human gate refuses takes no task along.
+func cascadeAccept(repoDir, projDir, parentID string) (cascaded, error) {
+	var out cascaded
+	if CheckHumanGate(projectGates(projDir).AcceptGate()) != nil {
+		return out, nil
+	}
+	children, err := childrenOf(repoDir, parentID)
+	if err != nil {
+		return out, err
+	}
+	for _, c := range children {
+		if !isTask(c.ID) || c.State != cascadeFrom[domain.ActionAccept] {
+			continue
+		}
+		if err := moveChild(repoDir, &c, domain.ActionAccept, map[string]string{"cascade_from": parentID}); err != nil {
+			return out, err
+		}
+		out.moved = append(out.moved, c)
+		out.lines = append(out.lines, fmt.Sprintf("%s: %s → %s along with %s", c.ID, cascadeFrom[domain.ActionAccept], c.State, parentID))
+		pendings, err := movePaidPendings(repoDir, c, "")
+		if err != nil {
+			return out, err
+		}
+		ideas, err := moveLinkedIdeas(repoDir, c, "")
+		if err != nil {
+			return out, err
+		}
+		out.lines = append(append(out.lines, pendings...), ideas...)
+	}
+	return out, nil
+}
+
 // childrenOf is parentID's direct children, sorted by id.
 func childrenOf(repoDir, parentID string) ([]store.Feature, error) {
 	all, err := store.LoadAllFeatures(repoDir)

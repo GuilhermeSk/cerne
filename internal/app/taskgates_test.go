@@ -221,6 +221,62 @@ func TestApproveCascadeRespectsHumanGate(t *testing.T) {
 	}
 }
 
+// TestAcceptCascadesToTasks (crit. 3): a human accepting the parent accepts,
+// in the same transition, each implemented task under it — one event per task
+// carrying cascade_from; a task still in development stays.
+func TestAcceptCascadesToTasks(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "")
+	repoDir, projDir, _ := newFeatureBackend(t)
+	seedFeatureInState(t, repoDir, "E-0001", domain.StateImplemented)
+	for id, s := range map[string]domain.FeatureState{"T-0002": domain.StateImplemented, "T-0003": domain.StateInDevelopment} {
+		seedWithSpec(t, repoDir, store.Feature{ID: id, Parent: "E-0001", State: s}, taskBody+exemptTaskBar)
+	}
+
+	out, err := TransitionFeature(repoDir, projDir, "E-0001", domain.ActionAccept, "", "", nil)
+	if err != nil {
+		t.Fatalf("accept E-0001: %v", err)
+	}
+	for id, want := range map[string]domain.FeatureState{"E-0001": domain.StateDone, "T-0002": domain.StateDone, "T-0003": domain.StateInDevelopment} {
+		if got := reload(t, repoDir, id).State; got != want {
+			t.Errorf("%s state = %s, want %s", id, got, want)
+		}
+	}
+	if evs := entityEvents(t, repoDir, "T-0002", "feature.accepted"); len(evs) != 1 || evs[0].Payload["cascade_from"] != "E-0001" {
+		t.Fatalf("T-0002 accept events = %+v, want one carrying cascade_from E-0001", evs)
+	}
+	if lines := strings.Join(out.Cascade, "\n"); !strings.Contains(lines, "T-0002: implemented → done along with E-0001") || strings.Contains(lines, "T-0003") {
+		t.Fatalf("cascade lines = %q, want T-0002 accepted and T-0003 absent", lines)
+	}
+}
+
+// TestAcceptCascadeSkipsFeatureChildren (crit. 3): an F- child had its own
+// approve and keeps its own accept; an agent actor takes no task along either
+// (the accept's human gate, as crit. 2 for the approve).
+func TestAcceptCascadeSkipsFeatureChildren(t *testing.T) {
+	for _, actor := range []string{"", "agent"} {
+		t.Run("actor="+actor, func(t *testing.T) {
+			t.Setenv("CERNE_ACTOR", actor)
+			repoDir, projDir, _ := newFeatureBackend(t)
+			seedFeatureInState(t, repoDir, "E-0001", domain.StateImplemented)
+			seedWithSpec(t, repoDir, store.Feature{ID: "F-0002", Parent: "E-0001", State: domain.StateImplemented}, taskBody+namedTaskBar)
+			seedWithSpec(t, repoDir, store.Feature{ID: "T-0003", Parent: "E-0001", State: domain.StateImplemented}, taskBody+exemptTaskBar)
+			if _, err := TransitionFeature(repoDir, projDir, "E-0001", domain.ActionAccept, "", "", nil); err != nil {
+				t.Fatalf("accept E-0001: %v", err)
+			}
+			if got := reload(t, repoDir, "F-0002").State; got != domain.StateImplemented {
+				t.Fatalf("F-0002 state = %s, want implemented: an F- child keeps its own accept", got)
+			}
+			want := domain.StateDone
+			if actor == "agent" {
+				want = domain.StateImplemented
+			}
+			if got := reload(t, repoDir, "T-0003").State; got != want {
+				t.Fatalf("T-0003 state = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
 // TestStartTaskAcceptsInheritedBar (crit. 4): each of the four forms starts a
 // task — the inherited one when it names the parent and the parent's bar is
 // named.

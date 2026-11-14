@@ -392,6 +392,12 @@ func TransitionFeatureOpForce(op *telemetry.Op, repoDir, projDir, id string, act
 		if err != nil {
 			return "", err
 		}
+		// So do its implemented tasks (T-0007).
+		if action == domain.ActionAccept {
+			if casc, err = cascadeAccept(repoDir, projDir, id); err != nil {
+				return "", err
+			}
+		}
 		// Approving a candidate opens the plan phase: scaffold the plan stub from the
 		// canonical template so it is committed alongside the approval (mirrors the
 		// spec stub written at create time). No-op if a real plan already exists.
