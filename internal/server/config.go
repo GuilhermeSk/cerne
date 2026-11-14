@@ -41,12 +41,16 @@ type llmConfigResponse struct {
 	// from (configured, detected on PATH, default); CLIs are the three
 	// subscription CLIs with whether each is installed; Key is the state of the
 	// provider's API key, never its value.
-	Source   string      `json:"source"`
-	CLIs     []cliStatus `json:"clis"`
-	Provider string      `json:"provider"`
-	Model    string      `json:"model"`
-	BaseURL  string      `json:"base_url"`
-	Key      keyStatus   `json:"key"`
+	// Keys is every provider's key state; Key is the configured provider's.
+	// Both and CLIs describe the machine that serves the page: the remote
+	// `cerne serve` omits them.
+	Source   string               `json:"source"`
+	CLIs     []cliStatus          `json:"clis,omitempty"`
+	Provider string               `json:"provider"`
+	Model    string               `json:"model"`
+	BaseURL  string               `json:"base_url"`
+	Key      *keyStatus           `json:"key,omitempty"`
+	Keys     map[string]keyStatus `json:"keys,omitempty"`
 }
 
 // absentCatalogLogged holds the "no global file" line to once per process: it
@@ -77,16 +81,33 @@ func loadCatalog() models.Catalog {
 }
 
 // llmConfig builds the GET payload for the project's [llm] config.
-func llmConfig(cfg project.LLMConfig) llmConfigResponse {
+func llmConfig(cfg project.LLMConfig, remote bool) llmConfigResponse {
 	cat := loadCatalog()
 	mode, source := llm.ResolveModeSource(cfg.Mode)
 	eff := cfg.WithDefaults()
-	return llmConfigResponse{
+	// The model the mode in use is actually given: claude-cli is never forced
+	// one, codex and gemini get it only when no byo-key provider is set.
+	model := cfg.Model
+	switch mode {
+	case llm.ModeClaudeCLI:
+		model = ""
+	case llm.ModeCodexCLI, llm.ModeGeminiCLI:
+		if cfg.Provider != "" {
+			model = ""
+		}
+	}
+	resp := llmConfigResponse{
 		Mode: mode, Models: cat.Entries, DefaultModel: cat.DefaultModel, LiveQuery: mode == llm.ModeClaudeCLI,
 		Providers: llm.ConfiguredProviders(cfg), PreferredProvider: cat.PreferredProvider,
-		Source: source, CLIs: cliStatuses(), Provider: eff.Provider, Model: cfg.Model, BaseURL: eff.BaseURL,
-		Key: keyStatusFor(eff.KeyEnv),
+		Source: source, Provider: eff.Provider, Model: model, BaseURL: eff.BaseURL,
 	}
+	if !remote {
+		resp.CLIs = cliStatuses()
+		resp.Keys = keyStatuses(cfg)
+		k := resp.Keys[eff.Provider]
+		resp.Key = &k
+	}
+	return resp
 }
 
 // handlePreferredProviderPut records the chat's provider choice in the global
@@ -136,19 +157,20 @@ func validLLMMode(mode string) bool {
 
 // handleLLMConfigGet returns the project's effective LLM mode (empty → the
 // normalized "delegation" default), read from .cernerc at projDir.
-func handleLLMConfigGet(w http.ResponseWriter, projDir string) {
+func handleLLMConfigGet(w http.ResponseWriter, r *http.Request, projDir string) {
+	remote := servedRemotely(r)
 	cfg, _, err := project.LoadConfig(projDir)
 	if errors.Is(err, project.ErrNoProject) {
 		// Serve/multiproject mode: the per-project dir holds only docs.lock, no
 		// .cernerc yet. Report the normalized default; a PUT seeds the .cernerc.
-		writeJSON(w, http.StatusOK, llmConfig(project.LLMConfig{}))
+		writeJSON(w, http.StatusOK, llmConfig(project.LLMConfig{}, remote))
 		return
 	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorBody(err.Error()))
 		return
 	}
-	writeJSON(w, http.StatusOK, llmConfig(cfg.LLM))
+	writeJSON(w, http.StatusOK, llmConfig(cfg.LLM, remote))
 }
 
 // handleLLMConfigPut sets the [llm] mode in .cernerc, preserving every other

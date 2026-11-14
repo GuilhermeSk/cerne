@@ -30,8 +30,9 @@ func (f fakeProv) Complete(context.Context, string) (string, error) { return f.r
 func aiServer(t *testing.T, found ...string) (http.Handler, string) {
 	t.Helper()
 	t.Setenv("CERNE_CONFIG_DIR", t.TempDir())
-	t.Setenv("CERNE_LLM_API_KEY", "")
-	t.Setenv("OPENROUTER_API_KEY", "")
+	for _, v := range []string{"CERNE_LLM_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "CERNE_COMPATIBLE_API_KEY"} {
+		t.Setenv(v, "")
+	}
 	repoDir, projDir := newBackend(t)
 	if err := project.SaveConfig(projDir, project.Config{ProjectID: "p", Backend: "b"}); err != nil {
 		t.Fatal(err)
@@ -96,7 +97,7 @@ func TestAIStatusReportsDetectionAndKeyWithoutTheValue(t *testing.T) {
 	if code != 200 || json.Unmarshal([]byte(body), &st) != nil {
 		t.Fatalf("%d %s", code, body)
 	}
-	if st.Mode != "codex-cli" || st.Source != "detected" || st.Provider != "anthropic" || st.Key.Env != "CERNE_LLM_API_KEY" || st.Key.Set {
+	if st.Mode != "codex-cli" || st.Source != "detected" || st.Provider != "anthropic" || st.Key.Env != "ANTHROPIC_API_KEY" || st.Key.Set {
 		t.Fatalf("status = %+v", st)
 	}
 	found := map[string]bool{}
@@ -264,5 +265,155 @@ func TestAIConnectionTestUsesTheUnsavedForm(t *testing.T) {
 	_, body = aiDo(t, h, http.MethodPost, "/api/config/llm/test", `{"provider":"openrouter","model":"m","base_url":"http://127.0.0.1:1","key":"`+aiSecret+`"}`)
 	if ok, _ := aiResult(t, body); ok || strings.Contains(body, aiSecret) {
 		t.Fatalf("unreachable endpoint: %s", body)
+	}
+}
+
+
+// saveLLM writes a project [llm] the way a team's .cernerc would carry it.
+func saveLLM(t *testing.T, projDir string, l project.LLMConfig) {
+	t.Helper()
+	cfg, _, err := project.LoadConfig(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.LLM = l
+	if err := project.SaveConfig(projDir, cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func chatServer(t *testing.T, hits *int, auth *string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*hits++
+		*auth = r.Header.Get("Authorization")
+		w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// F-0414 (D4): the status carries every provider's key state, never a value.
+func TestAIStatusCarriesEveryProvidersKey(t *testing.T) {
+	h, _ := aiServer(t)
+	t.Setenv("OPENAI_API_KEY", aiSecret)
+	_, body := aiDo(t, h, http.MethodGet, "/api/config/llm", "")
+	var st struct {
+		Keys map[string]struct {
+			Env, Source, Last4 string
+			Set                bool
+		} `json:"keys"`
+	}
+	if err := json.Unmarshal([]byte(body), &st); err != nil || strings.Contains(body, aiSecret) {
+		t.Fatalf("%v %s", err, body)
+	}
+	if k := st.Keys["openai"]; !k.Set || k.Env != "OPENAI_API_KEY" || k.Source != "env" || k.Last4 != "1234" {
+		t.Fatalf("openai = %+v", k)
+	}
+	if st.Keys["anthropic"].Set || st.Keys["compatible"].Set || len(st.Keys) != 5 {
+		t.Fatalf("keys = %+v", st.Keys)
+	}
+}
+
+// F-0414 (B2): saving one provider's key never overwrites another's.
+func TestAIKeysAreSavedUnderEachProvidersOwnName(t *testing.T) {
+	h, _ := aiServer(t)
+	aiDo(t, h, http.MethodPut, "/api/config/llm/key", `{"provider":"anthropic","value":"sk-ant-0001"}`)
+	aiDo(t, h, http.MethodPut, "/api/config/llm/key", `{"provider":"openai","value":"sk-oai-0002"}`)
+	raw, _ := os.ReadFile(filepath.Join(os.Getenv("CERNE_CONFIG_DIR"), "credentials.env"))
+	for _, want := range []string{"ANTHROPIC_API_KEY=sk-ant-0001", "OPENAI_API_KEY=sk-oai-0002"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("credentials = %q, missing %q", raw, want)
+		}
+	}
+}
+
+// F-0414 (B3): the model shown is the one the mode in use receives.
+func TestAIStatusModelIsTheOneTheModeUses(t *testing.T) {
+	cases := []struct {
+		l    project.LLMConfig
+		want string
+	}{
+		{project.LLMConfig{Mode: "claude-cli", Model: "gpt-5"}, ""},
+		{project.LLMConfig{Mode: "codex-cli", Model: "gpt-5"}, "gpt-5"},
+		{project.LLMConfig{Mode: "codex-cli", Provider: "openai", Model: "gpt-5"}, ""},
+		{project.LLMConfig{Mode: "byo-key", Provider: "openai", Model: "gpt-5"}, "gpt-5"},
+	}
+	for _, c := range cases {
+		h, dir := aiServer(t)
+		saveLLM(t, dir, c.l)
+		_, body := aiDo(t, h, http.MethodGet, "/api/config/llm", "")
+		var st aiStatus
+		json.Unmarshal([]byte(body), &st)
+		if st.Model != c.want {
+			t.Errorf("%+v: model = %q, want %q", c.l, st.Model, c.want)
+		}
+	}
+}
+
+// F-0414 (M8): the remote `cerne serve` never learns the server's key state or CLIs.
+func TestAIStatusOmitsKeysAndCLIsWhenServedRemotely(t *testing.T) {
+	_, dir := aiServer(t, "claude")
+	t.Setenv("OPENAI_API_KEY", aiSecret)
+	req := httptest.NewRequest(http.MethodGet, "/api/config/llm", nil)
+	req = req.WithContext(context.WithValue(req.Context(), remoteKey{}, true))
+	rec := httptest.NewRecorder()
+	handleLLMConfigGet(rec, req, dir)
+	body := rec.Body.String()
+	for _, banned := range []string{`"key"`, `"keys"`, `"clis"`, "last4", aiSecret} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("remote status leaks %s: %s", banned, body)
+		}
+	}
+	if !strings.Contains(body, `"mode"`) {
+		t.Fatalf("remote status lost the mode: %s", body)
+	}
+}
+
+// F-0414 (D3): without a typed key the test uses the key the saved config
+// would, and never hands a stored key to an endpoint other than the saved one.
+func TestAITestUsesTheSavedKeyEnvAndGuardsTheEndpoint(t *testing.T) {
+	h, dir := aiServer(t)
+	var hits int
+	var auth string
+	api := chatServer(t, &hits, &auth)
+	t.Setenv("MY_OPENAI_KEY", "sk-mine-0003")
+	saveLLM(t, dir, project.LLMConfig{Mode: "byo-key", Provider: "openai", Model: "m", KeyEnv: "MY_OPENAI_KEY", BaseURL: api.URL})
+
+	// Same provider, same URL: the saved key_env is read.
+	_, body := aiDo(t, h, http.MethodPost, "/api/config/llm/test", `{"provider":"openai","model":"m","base_url":"`+api.URL+`"}`)
+	if ok, msg := aiResult(t, body); !ok || auth != "Bearer sk-mine-0003" {
+		t.Fatalf("saved key_env: ok=%v %q auth=%q", ok, msg, auth)
+	}
+
+	// Another URL: the stored key is not sent there.
+	hits = 0
+	other := chatServer(t, &hits, &auth)
+	_, body = aiDo(t, h, http.MethodPost, "/api/config/llm/test", `{"provider":"openai","model":"m","base_url":"`+other.URL+`"}`)
+	if ok, msg := aiResult(t, body); ok || !strings.Contains(msg, "base URL") || hits != 0 {
+		t.Fatalf("different base URL must refuse: ok=%v %q hits=%d", ok, msg, hits)
+	}
+	// compatible never gets another provider's key, saved or not.
+	t.Setenv("CERNE_LLM_API_KEY", "sk-anthropic-legacy")
+	_, body = aiDo(t, h, http.MethodPost, "/api/config/llm/test", `{"provider":"compatible","model":"m","base_url":"`+other.URL+`"}`)
+	if ok, _ := aiResult(t, body); !ok || auth != "" {
+		t.Fatalf("compatible got a foreign key: ok=%v auth=%q", ok, auth)
+	}
+}
+
+func TestAITestWithATypedKeyNamesAnEnvVarThatWins(t *testing.T) {
+	h, _ := aiServer(t)
+	var hits int
+	var auth string
+	api := chatServer(t, &hits, &auth)
+	t.Setenv("OPENROUTER_API_KEY", "sk-env-0004")
+	_, body := aiDo(t, h, http.MethodPost, "/api/config/llm/test", `{"provider":"openrouter","model":"m","base_url":"`+api.URL+`","key":"`+aiSecret+`"}`)
+	var r struct {
+		OK   bool   `json:"ok"`
+		Note string `json:"note"`
+	}
+	json.Unmarshal([]byte(body), &r)
+	if !r.OK || auth != "Bearer "+aiSecret || !strings.Contains(r.Note, "OPENROUTER_API_KEY") || strings.Contains(body, aiSecret) {
+		t.Fatalf("ok=%v auth=%q note=%q body=%s", r.OK, auth, r.Note, body)
 	}
 }

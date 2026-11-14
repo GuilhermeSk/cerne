@@ -165,8 +165,8 @@ func dataRoutes() []dataRoute {
 		{"POST", "/chat/title", false, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {
 			handleChatTitle(w, r, projDir)
 		}},
-		{"GET", "/config/llm", true, func(w http.ResponseWriter, _ *http.Request, _, projDir, _ string) {
-			handleLLMConfigGet(w, projDir)
+		{"GET", "/config/llm", true, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {
+			handleLLMConfigGet(w, r, projDir)
 		}},
 		{"PUT", "/config/llm", true, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {
 			handleLLMConfigPut(w, r, projDir)

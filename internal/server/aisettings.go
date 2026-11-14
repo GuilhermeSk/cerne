@@ -42,9 +42,10 @@ type keyStatus struct {
 	Problem string `json:"problem,omitempty"`
 }
 
-func keyStatusFor(env string) keyStatus {
+// keyStatusFor is the state of the key c (a raw config: Provider, KeyEnv) reads.
+func keyStatusFor(c project.LLMConfig) keyStatus {
+	v, source, env, err := c.ResolveKey()
 	st := keyStatus{Env: env}
-	v, source, err := project.ResolveAPIKey(env)
 	if err != nil {
 		st.Problem = err.Error()
 		return st
@@ -57,6 +58,25 @@ func keyStatusFor(env string) keyStatus {
 		st.Last4 = v[len(v)-4:]
 	}
 	return st
+}
+
+// keyProviders are the byo-key providers whose key state the status reports.
+var keyProviders = []string{"anthropic", "openai", "gemini", "openrouter", "compatible"}
+
+// keyStatuses is the key state of every provider: Settings enables "Use" when
+// the provider's own variable or file key exists, not only for the configured
+// provider (F-0414). A saved key_env belongs to the configured provider alone.
+func keyStatuses(cfg project.LLMConfig) map[string]keyStatus {
+	out := map[string]keyStatus{}
+	eff := cfg.WithDefaults().Provider
+	for _, p := range keyProviders {
+		c := project.LLMConfig{Provider: p}
+		if p == eff {
+			c.KeyEnv = cfg.KeyEnv
+		}
+		out[p] = keyStatusFor(c)
+	}
+	return out
 }
 
 // llmTestTimeout bounds the connection test; a CLI cold start is seconds.
@@ -107,42 +127,70 @@ func handleLLMTest(w http.ResponseWriter, r *http.Request, projDir string) {
 	if req.Mode != "" {
 		cfg.Mode = req.Mode
 	}
+	var note string
 	if req.Provider != "" {
 		// The unsaved form (F-0414): test what is on screen, not what is saved.
-		// The base URL and key variable restart from this provider's presets.
-		cfg.Provider, cfg.Model, cfg.BaseURL, cfg.KeyEnv, cfg.TestKey = req.Provider, req.Model, req.BaseURL, "", req.Key
+		saved := cfg
+		sameProvider := saved.WithDefaults().Provider == req.Provider
+		cfg.Provider, cfg.Model, cfg.BaseURL, cfg.TestKey = req.Provider, req.Model, req.BaseURL, req.Key
+		if !sameProvider {
+			cfg.KeyEnv = "" // a saved key_env belongs to the saved provider
+		}
 		if req.Mode == "" {
 			cfg.Mode = llm.ModeByoKey
 		}
+		stored, source, env, _ := cfg.ResolveKey()
+		if req.Key == "" && stored != "" {
+			// A stored key goes only to the provider's own endpoint or to the
+			// very URL that is saved, never to one typed in the form.
+			official := project.LLMConfig{Provider: req.Provider}.WithDefaults().BaseURL
+			base := cfg.WithDefaults().BaseURL
+			if base != official && !(sameProvider && base == saved.WithDefaults().BaseURL) {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "refusing to send a stored key to a base URL that is not the saved one: type the key to test it, or save the URL first"})
+				return
+			}
+		}
+		if req.Key != "" && stored != "" && source == "env" {
+			note = env + " is set in the environment and wins over a saved key in real use."
+		}
+	}
+	reply := func(m map[string]any) {
+		if note != "" {
+			m["note"] = note
+		}
+		writeJSON(w, http.StatusOK, m)
 	}
 	prov, err := newLLMProvider(cfg)
 	if errors.Is(err, llm.ErrNoProviderForDelegation) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "delegation mode has nothing to test: the agent already running does the work"})
+		reply(map[string]any{"ok": false, "error": "delegation mode has nothing to test: the agent already running does the work"})
 		return
 	}
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		reply(map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), llmTestTimeout)
 	defer cancel()
 	if _, err := prov.Complete(ctx, "Reply with the single word: ok"); err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		reply(map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	reply(map[string]any{"ok": true})
 }
 
-// keyEnvFor is the variable the key of provider (default: the configured one)
-// lives in. "" for an unknown provider.
+// keyEnvFor is the variable a key saved from Settings for provider (default:
+// the configured one) lives in: a saved key_env for the configured provider,
+// otherwise the provider's own name — one per vendor, so a key never overwrites
+// another provider's. "" for an unknown provider.
 func keyEnvFor(cfg project.LLMConfig, provider string) string {
-	if provider == "" || provider == cfg.WithDefaults().Provider {
-		return cfg.WithDefaults().KeyEnv
+	eff := cfg.WithDefaults().Provider
+	if provider == "" {
+		provider = eff
 	}
-	if !slices.Contains([]string{"anthropic", "openai", "gemini", "openrouter", "compatible"}, provider) {
-		return ""
+	if provider == eff && cfg.KeyEnv != "" {
+		return cfg.KeyEnv
 	}
-	return project.LLMConfig{Provider: provider}.WithDefaults().KeyEnv
+	return project.ProviderKeyEnv(provider)
 }
 
 // handleLLMKey writes (PUT) or removes (DELETE) the provider's key in the host
@@ -181,6 +229,10 @@ func handleLLMKey(w http.ResponseWriter, r *http.Request, projDir string) {
 	case err != nil:
 		writeJSON(w, http.StatusInternalServerError, errorBody(err.Error()))
 	default:
-		writeJSON(w, http.StatusOK, keyStatusFor(env))
+		provider := req.Provider
+		if provider == "" {
+			provider = cfg.WithDefaults().Provider
+		}
+		writeJSON(w, http.StatusOK, keyStatuses(cfg)[provider])
 	}
 }
