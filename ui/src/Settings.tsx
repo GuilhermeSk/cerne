@@ -17,6 +17,7 @@ import { useT, type Messages } from './i18n'
 import { norm } from './Palette'
 import { FixBlock } from './Harness'
 import { checkProjectName } from './projectName'
+import AISettings from './AISettings'
 
 // Settings (F-0315): the active project's settings, derived from the registry
 // F-0314 serves. The screen knows no key: title, description, type and scopes
@@ -298,7 +299,14 @@ export default function Settings({ group: asked = 'general' }: { group?: Setting
               busy={load.retrying}
             />
           ))}
-          {shown.length === 0 ? (
+          {group === 'ai' && q === '' ? (
+            <AISettings
+              key={activePid}
+              settings={all}
+              scope={effScope}
+              onWritten={(v) => setWritten({ base: latest.current.data, view: v })}
+            />
+          ) : shown.length === 0 ? (
             <p className="settings-empty">{ts.noMatch(query.trim())}</p>
           ) : (
             <ul className="settings-list">
