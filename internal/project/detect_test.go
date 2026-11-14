@@ -28,7 +28,7 @@ func TestDetectCLIOrderAndNone(t *testing.T) {
 		{nil, ""},
 	}
 	for _, c := range cases {
-		if got := detectCLI(fakeLook(c.have...)); got != c.want {
+		if got := firstCLI(fakeLook(c.have...)); got != c.want {
 			t.Errorf("have %v: got %q want %q", c.have, got, c.want)
 		}
 	}
@@ -37,7 +37,7 @@ func TestDetectCLIOrderAndNone(t *testing.T) {
 func TestDetectCLIDisabledSkipsPATH(t *testing.T) {
 	t.Setenv("CERNE_NO_CLI_DETECT", "1")
 	look := func(string) (string, error) { t.Fatal("PATH consulted"); return "", nil }
-	if got := detectCLI(look); got != "" {
+	if got := firstCLI(look); got != "" {
 		t.Errorf("got %q", got)
 	}
 }
@@ -45,5 +45,20 @@ func TestDetectCLIDisabledSkipsPATH(t *testing.T) {
 func TestTestMainDisablesDetection(t *testing.T) {
 	if DetectSubscriptionCLI() != "" {
 		t.Fatal("detection must be off under go test")
+	}
+}
+
+func firstCLI(look func(string) (string, error)) string {
+	if f := foundCLIs(look); len(f) > 0 {
+		return f[0]
+	}
+	return ""
+}
+
+func TestFoundCLIsListsAllInOrder(t *testing.T) {
+	t.Setenv("CERNE_NO_CLI_DETECT", "")
+	got := foundCLIs(fakeLook("gemini", "claude"))
+	if len(got) != 2 || got[0] != "claude" || got[1] != "gemini" {
+		t.Fatalf("got %v", got)
 	}
 }

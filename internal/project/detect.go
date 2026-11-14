@@ -12,21 +12,32 @@ var subscriptionCLIs = []string{"claude", "codex", "gemini"}
 // lookPath is the PATH probe; tests replace it.
 var lookPath = exec.LookPath
 
-// DetectSubscriptionCLI returns the first of claude, codex, gemini found on
-// PATH, "" when none is (or when CERNE_NO_CLI_DETECT is set, which the test
-// binaries do so no test reaches a real CLI). Resolved once per process.
-var DetectSubscriptionCLI = sync.OnceValue(func() string {
-	return detectCLI(lookPath)
+// FoundSubscriptionCLIs lists, in detection order, the subscription CLIs on
+// PATH ("claude", "codex", "gemini"); none when CERNE_NO_CLI_DETECT is set,
+// which the test binaries do so no test reaches a real CLI. Resolved once per
+// process; tests replace it.
+var FoundSubscriptionCLIs = sync.OnceValue(func() []string {
+	return foundCLIs(lookPath)
 })
 
-func detectCLI(look func(string) (string, error)) string {
-	if os.Getenv("CERNE_NO_CLI_DETECT") != "" {
-		return ""
-	}
-	for _, name := range subscriptionCLIs {
-		if _, err := look(name); err == nil {
-			return name
-		}
+// DetectSubscriptionCLI is the first of FoundSubscriptionCLIs, "" when none.
+// Tests replace it.
+var DetectSubscriptionCLI = func() string {
+	if found := FoundSubscriptionCLIs(); len(found) > 0 {
+		return found[0]
 	}
 	return ""
+}
+
+func foundCLIs(look func(string) (string, error)) []string {
+	if os.Getenv("CERNE_NO_CLI_DETECT") != "" {
+		return nil
+	}
+	var found []string
+	for _, name := range subscriptionCLIs {
+		if _, err := look(name); err == nil {
+			found = append(found, name)
+		}
+	}
+	return found
 }

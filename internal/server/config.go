@@ -15,6 +15,10 @@ import (
 	"github.com/henriquesakata/cerne/internal/telemetry"
 )
 
+// newLLMProvider builds the provider the connection test calls; tests swap it
+// for a fake so no CLI or network is reached.
+var newLLMProvider = llm.NewProvider
+
 // llmConfigResponse is the GET/PUT /api/config/llm payload: the effective LLM
 // mode. Secrets never travel here — the byo-key API key stays in the env.
 // Models is the resolved model catalog (F-0311: every visibility — the UI
@@ -33,6 +37,16 @@ type llmConfigResponse struct {
 	// choice the chat starts from and the catalog refresh queries.
 	Providers         []string `json:"providers"`
 	PreferredProvider string   `json:"preferred_provider,omitempty"`
+	// F-0414: what the AI settings panel shows. Source says where Mode came
+	// from (configured, detected on PATH, default); CLIs are the three
+	// subscription CLIs with whether each is installed; Key is the state of the
+	// provider's API key, never its value.
+	Source   string      `json:"source"`
+	CLIs     []cliStatus `json:"clis"`
+	Provider string      `json:"provider"`
+	Model    string      `json:"model"`
+	BaseURL  string      `json:"base_url"`
+	Key      keyStatus   `json:"key"`
 }
 
 // absentCatalogLogged holds the "no global file" line to once per process: it
@@ -65,10 +79,13 @@ func loadCatalog() models.Catalog {
 // llmConfig builds the GET payload for the project's [llm] config.
 func llmConfig(cfg project.LLMConfig) llmConfigResponse {
 	cat := loadCatalog()
-	mode := llm.ResolveMode(cfg.Mode)
+	mode, source := llm.ResolveModeSource(cfg.Mode)
+	eff := cfg.WithDefaults()
 	return llmConfigResponse{
 		Mode: mode, Models: cat.Entries, DefaultModel: cat.DefaultModel, LiveQuery: mode == llm.ModeClaudeCLI,
 		Providers: llm.ConfiguredProviders(cfg), PreferredProvider: cat.PreferredProvider,
+		Source: source, CLIs: cliStatuses(), Provider: eff.Provider, Model: cfg.Model, BaseURL: eff.BaseURL,
+		Key: keyStatusFor(eff.KeyEnv),
 	}
 }
 
