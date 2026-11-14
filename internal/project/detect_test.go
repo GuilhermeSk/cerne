@@ -62,3 +62,19 @@ func TestFoundCLIsListsAllInOrder(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// F-0414 (D1): detection is per call — an install made while `cerne ui` runs
+// shows up on the next request.
+func TestFoundSubscriptionCLIsIsNotCached(t *testing.T) {
+	t.Setenv("CERNE_NO_CLI_DETECT", "")
+	orig := lookPath
+	t.Cleanup(func() { lookPath = orig })
+	lookPath = fakeLook("claude")
+	if got := FoundSubscriptionCLIs(); len(got) != 1 {
+		t.Fatalf("first: %v", got)
+	}
+	lookPath = fakeLook("claude", "codex")
+	if got := FoundSubscriptionCLIs(); len(got) != 2 {
+		t.Fatalf("second call must re-detect: %v", got)
+	}
+}

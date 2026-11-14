@@ -44,7 +44,7 @@ const (
 )
 
 // detectCLI is the PATH probe behind the dynamic default; tests replace it.
-var detectCLI = project.DetectSubscriptionCLI
+var detectCLI = func() string { return project.DetectSubscriptionCLI() }
 
 // Sources of the effective mode (ResolveModeSource).
 const (

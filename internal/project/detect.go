@@ -3,7 +3,6 @@ package project
 import (
 	"os"
 	"os/exec"
-	"sync"
 )
 
 // subscriptionCLIs is the detection order: the first one on PATH wins.
@@ -14,11 +13,12 @@ var lookPath = exec.LookPath
 
 // FoundSubscriptionCLIs lists, in detection order, the subscription CLIs on
 // PATH ("claude", "codex", "gemini"); none when CERNE_NO_CLI_DETECT is set,
-// which the test binaries do so no test reaches a real CLI. Resolved once per
-// process; tests replace it.
-var FoundSubscriptionCLIs = sync.OnceValue(func() []string {
+// which the test binaries do so no test reaches a real CLI. Probed on every
+// call (a PATH lookup is cheap), so a CLI installed while `cerne ui` runs shows
+// up on the next request; tests replace it.
+var FoundSubscriptionCLIs = func() []string {
 	return foundCLIs(lookPath)
-})
+}
 
 // DetectSubscriptionCLI is the first of FoundSubscriptionCLIs, "" when none.
 // Tests replace it.

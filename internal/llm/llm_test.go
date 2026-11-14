@@ -67,3 +67,14 @@ func TestMain_DetectionOffByDefault(t *testing.T) {
 		t.Fatalf("under go test an empty mode must stay delegation, got %q/%q", got, src)
 	}
 }
+
+// F-0414 (M2): ResolveMode asks the project detector at call time, so one
+// replaced seam (project.DetectSubscriptionCLI) steers both layers.
+func TestResolveModeFollowsTheProjectDetector(t *testing.T) {
+	orig := project.DetectSubscriptionCLI
+	t.Cleanup(func() { project.DetectSubscriptionCLI = orig })
+	project.DetectSubscriptionCLI = func() string { return "gemini" }
+	if got := ResolveMode(""); got != ModeGeminiCLI {
+		t.Fatalf("ResolveMode = %q, want gemini-cli", got)
+	}
+}
