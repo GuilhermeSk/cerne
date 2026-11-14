@@ -17,6 +17,7 @@ import Harness from './Harness'
 import History from './History'
 import Manage from './Manage'
 import NewFeature from './NewFeature'
+import ReportBug from './ReportBug'
 import StatsPage from './Stats'
 import Activity from './Activity'
 import Handoffs, { HandoffPage } from './Handoffs'
@@ -147,6 +148,7 @@ function Routed({ hash }: { hash: string }) {
   if (hash === '#/manage') return <Manage />
   if (hash === '#/settings' || hash.startsWith('#/settings/')) return <Settings group={groupFromHash(hash)} />
   if (hash === '#/new') return <NewFeature />
+  if (hash === '#/bug') return <ReportBug />
   if (hash === '#/pendings' || hash.startsWith('#/pendings?')) return <Pendings hash={hash} />
   if (hash === '#/ideas' || hash.startsWith('#/ideas?')) return <IdeasPage hash={hash} />
   if (hash === '#/kanban') return <Kanban />

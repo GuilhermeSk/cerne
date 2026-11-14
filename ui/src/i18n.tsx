@@ -395,6 +395,7 @@ const ptBR = {
     pendingClarifyTitle: (n: number) =>
       `${n} esclarecimento(s) aguardando sua resposta`,
     activeWork: (n: number) => `👤 ${n}`,
+    originLabels: { human: 'pedido humano', agent: 'achado do agente' },
     activeWorkTitle: (actors: string[]) =>
       `Em andamento por: ${actors.join(', ')}`,
     backlogColumn: 'Backlog',
@@ -798,6 +799,16 @@ const ptBR = {
     epicOptional: 'Épico (opcional)',
     createCandidate: 'Criar (candidata)',
     hint: 'A feature nasce candidata com um stub de spec. Escreva a spec na página dela e aprove quando estiver pronta.',
+  },
+  reportBug: {
+    link: '+ Reportar correção',
+    title: 'Reportar correção',
+    fieldTitle: 'Título',
+    fieldContext: 'Contexto (obrigatório)',
+    fieldSteps: 'Como reproduzir',
+    fieldExpected: 'Esperado × obtido',
+    submit: 'Reportar correção',
+    hint: 'O relato vale como aprovação: a correção nasce aprovada e já pode ser iniciada. O aceite continua sendo seu.',
   },
   decisions: {
     loadError: (e: string) => `Erro ao carregar decisões: ${e}`,
@@ -1702,6 +1713,7 @@ const en: Messages = {
     pendingClarify: (n: number) => `❓ ${n}`,
     pendingClarifyTitle: (n: number) => `${n} clarification(s) awaiting your answer`,
     activeWork: (n: number) => `👤 ${n}`,
+    originLabels: { human: 'human request', agent: 'agent finding' },
     activeWorkTitle: (actors: string[]) => `In progress by: ${actors.join(', ')}`,
     backlogColumn: 'Backlog',
     backlogColumnOpen: 'Open in Backlog',
@@ -2094,6 +2106,16 @@ const en: Messages = {
     epicOptional: 'Epic (optional)',
     createCandidate: 'Create (candidate)',
     hint: 'The feature is born a candidate with a spec stub. Write the spec on its page and approve it when ready.',
+  },
+  reportBug: {
+    link: '+ Report a fix',
+    title: 'Report a fix',
+    fieldTitle: 'Title',
+    fieldContext: 'Context (required)',
+    fieldSteps: 'Steps to reproduce',
+    fieldExpected: 'Expected × actual',
+    submit: 'Report a fix',
+    hint: 'The report counts as the approval: the fix is born approved and can be started right away. Accepting stays with you.',
   },
   decisions: {
     loadError: (e: string) => `Failed to load decisions: ${e}`,

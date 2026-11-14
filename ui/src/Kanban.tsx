@@ -883,6 +883,11 @@ function Card({
         )}
         {feature.module && <span className="badge">{feature.module}</span>}
         {feature.priority && <span className="badge badge-priority">{feature.priority}</span>}
+        {feature.origin && (
+          <span className="badge badge-origin" data-origin={feature.origin}>
+            {t.kanban.originLabels[feature.origin]}
+          </span>
+        )}
       </span>
       <span className="card-title">{feature.title}</span>
       {feature.owner && <span className="card-owner">@{feature.owner}</span>}

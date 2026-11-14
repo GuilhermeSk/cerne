@@ -33,6 +33,7 @@ export type Feature = {
   delivery_mr_url?: string // F-0179: URL of the delivering MR/PR
   capabilities?: string[] // F-0188: C- ids da taxonomia funcional
   owner?: string // F-0204: responsável (texto livre)
+  origin?: 'human' | 'agent' // T-0005: quem pediu a demanda; ausente em cards antigos
   priority?: string // F-0204: p0..p3 (conjunto fechado)
   from_idea?: string // F-0312: a ideia (I-) de que a promoção a criou
   created_at: string
@@ -835,6 +836,23 @@ export async function createFeature(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, module, parent }),
+  })
+  if (!r.ok) return { ok: false, error: await errorMessage(r) }
+  return { ok: true, feature: ((await r.json()) as { feature: Feature }).feature }
+}
+
+// reportBug cria uma correção B- aprovada (T-0006): o relato de três campos vai
+// no mesmo POST /api/features, com prefix "B"; quem preenche o formulário é o humano.
+export async function reportBug(
+  title: string,
+  context: string,
+  steps: string,
+  expected: string,
+): Promise<CreateOutcome> {
+  const r = await fetch(`${base()}/features`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prefix: 'B', title, context, steps, expected }),
   })
   if (!r.ok) return { ok: false, error: await errorMessage(r) }
   return { ok: true, feature: ((await r.json()) as { feature: Feature }).feature }
