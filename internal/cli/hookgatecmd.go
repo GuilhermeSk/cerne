@@ -177,7 +177,7 @@ var (
 	featureIDRe   = regexp.MustCompile(`\bF-\d{4,}\b`)
 	// startedIDRe is the id a confirmed `feature start` binds: F-, E- or T-,
 	// the same kinds bindingLive accepts (F-0309).
-	startedIDRe = regexp.MustCompile(`\b[FET]-\d{4,}\b`)
+	startedIDRe = regexp.MustCompile(`\b[FETB]-\d{4,}\b`)
 )
 
 var (
