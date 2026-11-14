@@ -39,6 +39,22 @@ func TestServerCreatesBug(t *testing.T) {
 		}
 	}
 
+	// The form's origin is human by construction: no relayed quote is invented.
+	evs, err := store.ReadAllEvents(repoDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range evs {
+		if e.EntityID == got.Feature.ID && e.Type == "feature.created" {
+			if _, ok := e.Payload["on_behalf"]; ok {
+				t.Fatalf("payload = %v, want no on_behalf key", e.Payload)
+			}
+			if e.Payload["approved"] != "by report" {
+				t.Fatalf("payload = %v, want approved=by report", e.Payload)
+			}
+		}
+	}
+
 	var errBody map[string]string
 	rec = doJSON(t, New(repoDir, projDir, ""), http.MethodPost, "/api/features",
 		`{"prefix":"B","title":"Sem relato"}`, &errBody)

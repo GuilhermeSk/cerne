@@ -10,3 +10,9 @@ import "github.com/henriquesakata/cerne/internal/store"
 func CreateBugWithSpec(repoDir, projDir, title, module, fixes string, facets, components []string, specBody string, force bool, owner, priority, onBehalf string, by DocAuthor) (store.Feature, error) {
 	return createFeatureCore(repoDir, projDir, "B", title, module, "", facets, components, specBody, force, owner, priority, fixes, by, onBehalf)
 }
+
+// CreateBugByHuman is CreateBugWithSpec for a person at the UI form: the origin
+// is human by construction, so no on_behalf quote is recorded.
+func CreateBugByHuman(repoDir, projDir, title, module string, facets, components []string, specBody string, by DocAuthor) (store.Feature, error) {
+	return createFeatureOrigin(repoDir, projDir, "B", title, module, "", facets, components, specBody, false, "", "", "", by, "human", "")
+}

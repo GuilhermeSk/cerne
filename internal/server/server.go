@@ -1294,14 +1294,14 @@ func handleCreateFeature(w http.ResponseWriter, r *http.Request, repoDir, projDi
 	var f store.Feature
 	var err error
 	if req.Prefix == "B" {
-		// The reporter's own words are the on-behalf quote, so the origin is
-		// human even under CERNE_ACTOR=agent; an empty report is refused.
+		// The person at the form is the human, even under CERNE_ACTOR=agent;
+		// an empty report is refused.
 		if strings.TrimSpace(req.Context) == "" {
 			writeJSON(w, http.StatusUnprocessableEntity, errorBody("the report needs its context"))
 			return
 		}
 		body := spectmpl.BugBodyIn(store.DocsLanguage(repoDir), req.Context, req.Steps, req.Expected)
-		f, err = app.CreateBugWithSpec(repoDir, projDir, req.Title, req.Module, "", req.Facets, req.Components, body, false, "", "", req.Context, app.HumanAuthor())
+		f, err = app.CreateBugByHuman(repoDir, projDir, req.Title, req.Module, req.Facets, req.Components, body, app.HumanAuthor())
 	} else {
 		f, err = app.CreateFeature(repoDir, projDir, req.Title, req.Module, req.Parent, req.Facets, req.Components)
 	}

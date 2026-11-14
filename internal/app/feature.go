@@ -186,14 +186,22 @@ func CreateTaskWithSpec(repoDir, projDir, title, module, parent string, facets, 
 // identical across the three. A spec body is recorded as written by by — the
 // zero DocAuthor resolves this process's (F-0375); cerne's stub by nobody.
 func createFeatureCore(repoDir, projDir, prefix, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority, fixes string, by DocAuthor, onBehalf string) (store.Feature, error) {
+	origin, quote, err := resolveOrigin(onBehalf)
+	if err != nil {
+		return store.Feature{}, err
+	}
+	return createFeatureOrigin(repoDir, projDir, prefix, title, module, parent, facets, components, specBody, force, owner, priority, fixes, by, origin, quote)
+}
+
+// createFeatureOrigin is createFeatureCore with the origin already resolved
+// (T-0006: the UI form is human by construction, whatever CERNE_ACTOR says).
+func createFeatureOrigin(repoDir, projDir, prefix, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority, fixes string, by DocAuthor, origin, quote string) (store.Feature, error) {
 	n, err := prepareFeature(prefix, title, module, parent, facets, components, specBody, force, owner, priority)
 	n.fixes = fixes
 	if err != nil {
 		return store.Feature{}, err
 	}
-	if n.origin, n.onBehalf, err = resolveOrigin(onBehalf); err != nil {
-		return store.Feature{}, err
-	}
+	n.origin, n.onBehalf = origin, quote
 	if strings.TrimSpace(specBody) != "" {
 		if by == (DocAuthor{}) {
 			by = docAuthor(projDir)
