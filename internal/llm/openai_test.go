@@ -156,3 +156,54 @@ func TestNewProviderOpenAIRequiresModel(t *testing.T) {
 		t.Fatalf("NewProvider = %+v, %v, want the OpenAI default base URL", prov, err)
 	}
 }
+
+func TestPresetProvidersHitTheirEndpoints(t *testing.T) {
+	var gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
+		w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	t.Setenv("GEMINI_API_KEY", "gk")
+	t.Setenv("OPENROUTER_API_KEY", "ok")
+	t.Setenv("CERNE_LLM_API_KEY", "")
+	cases := []struct {
+		cfg                project.LLMConfig
+		wantPath, wantAuth string
+	}{
+		{project.LLMConfig{Provider: "gemini", Model: "m", BaseURL: srv.URL + "/v1beta/openai"}, "/v1beta/openai/chat/completions", "Bearer gk"},
+		{project.LLMConfig{Provider: "openrouter", Model: "m", BaseURL: srv.URL + "/api"}, "/api/v1/chat/completions", "Bearer ok"},
+		{project.LLMConfig{Provider: "compatible", Model: "m", BaseURL: srv.URL + "/v1"}, "/v1/chat/completions", ""},
+	}
+	for _, c := range cases {
+		c.cfg.Mode = "byo-key"
+		prov, err := NewProvider(c.cfg)
+		if err != nil {
+			t.Fatalf("%s: %v", c.cfg.Provider, err)
+		}
+		if out, err := prov.Complete(context.Background(), "q"); err != nil || out != "ok" {
+			t.Fatalf("%s: %q %v", c.cfg.Provider, out, err)
+		}
+		if gotPath != c.wantPath || gotAuth != c.wantAuth {
+			t.Errorf("%s: path=%q auth=%q, want %q %q", c.cfg.Provider, gotPath, gotAuth, c.wantPath, c.wantAuth)
+		}
+	}
+}
+
+func TestCompatibleNeedsABaseURLButNoKey(t *testing.T) {
+	t.Setenv("CERNE_LLM_API_KEY", "")
+	_, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "compatible", Model: "m"})
+	if !errors.Is(err, errBaseURLRequired) {
+		t.Fatalf("err = %v, want errBaseURLRequired", err)
+	}
+	if _, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "compatible", Model: "m", BaseURL: "http://localhost:11434/v1"}); err != nil {
+		t.Fatalf("keyless compatible must build: %v", err)
+	}
+	t.Setenv("OPENROUTER_API_KEY", "")
+	if _, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "openrouter", Model: "m"}); !errors.Is(err, ErrAPIKeyMissing) {
+		t.Fatalf("err = %v, want ErrAPIKeyMissing for a keyed preset", err)
+	}
+	if _, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "nope", Model: "m"}); err == nil {
+		t.Fatal("unknown provider must error")
+	}
+}

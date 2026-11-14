@@ -30,6 +30,14 @@ var ErrAPIKeyMissing = errors.New("LLM API key not set in environment")
 // providerAnthropic is the only concrete byo-key provider implemented.
 const providerAnthropic = "anthropic"
 
+// The other byo-key providers (F-0414) all speak the OpenAI adapter; only the
+// preset (base URL, key variable) differs.
+const (
+	providerGemini     = "gemini"
+	providerOpenRouter = "openrouter"
+	providerCompatible = "compatible"
+)
+
 // anthropicVersion is the required value of the anthropic-version header.
 const anthropicVersion = "2023-06-01"
 
@@ -82,17 +90,22 @@ func NewProvider(cfg project.LLMConfig) (Provider, error) {
 	case ModeGeminiCLI:
 		return &cliProvider{kind: mode, bin: "gemini", model: rawModel, run: execRun}, nil
 	}
-	if cfg.Provider != providerAnthropic && cfg.Provider != providerOpenAI {
-		return nil, fmt.Errorf("LLM provider %q not supported (only %q, %q)", cfg.Provider, providerAnthropic, providerOpenAI)
+	switch cfg.Provider {
+	case providerAnthropic, providerOpenAI, providerGemini, providerOpenRouter, providerCompatible:
+	default:
+		return nil, fmt.Errorf("LLM provider %q not supported (use anthropic, openai, gemini, openrouter or compatible)", cfg.Provider)
 	}
 	if cfg.Model == "" {
 		return nil, errModelRequired
 	}
+	if cfg.BaseURL == "" {
+		return nil, errBaseURLRequired
+	}
 	key := os.Getenv(cfg.KeyEnv)
-	if key == "" {
+	if key == "" && cfg.Provider != providerCompatible {
 		return nil, fmt.Errorf("%w: set the %s environment variable", ErrAPIKeyMissing, cfg.KeyEnv)
 	}
-	if cfg.Provider == providerOpenAI {
+	if cfg.Provider != providerAnthropic {
 		return &openaiProvider{baseURL: cfg.BaseURL, model: cfg.Model, apiKey: key, httpClient: http.DefaultClient}, nil
 	}
 	return &httpProvider{

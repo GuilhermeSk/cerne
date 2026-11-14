@@ -372,8 +372,23 @@ func defaultModel() string {
 	return cat.DefaultModel
 }
 
-// llmProviderOpenAI is the OpenAI-compatible byo-key provider (F-0323).
-const llmProviderOpenAI = "openai"
+// Byo-key provider names with a preset (F-0414).
+const (
+	llmProviderOpenAI     = "openai"
+	llmProviderGemini     = "gemini"
+	llmProviderOpenRouter = "openrouter"
+	llmProviderCompatible = "compatible"
+)
+
+// providerPresets are the per-provider base URL and key variable defaults. A
+// provider absent here (anthropic, the empty default) uses the Anthropic ones;
+// "compatible" has no URL on purpose — the user's endpoint is required.
+var providerPresets = map[string]struct{ baseURL, keyEnv string }{
+	llmProviderOpenAI:     {"https://api.openai.com", defaultLLMKeyEnv},
+	llmProviderGemini:     {"https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY"},
+	llmProviderOpenRouter: {"https://openrouter.ai/api", "OPENROUTER_API_KEY"},
+	llmProviderCompatible: {"", defaultLLMKeyEnv},
+}
 
 // WithDefaults returns a copy with each empty/zero byo-key field filled by its
 // default. Mode is left untouched (llm.ResolveMode owns that fallback). It is
@@ -382,18 +397,20 @@ func (c LLMConfig) WithDefaults() LLMConfig {
 	if c.Provider == "" {
 		c.Provider = defaultLLMProvider
 	}
-	// F-0323: the openai provider gets no Anthropic default model (it would
-	// never exist there) and its own base URL.
-	if c.Model == "" && c.Provider != llmProviderOpenAI {
+	preset, ok := providerPresets[c.Provider]
+	if !ok {
+		preset.baseURL, preset.keyEnv = defaultLLMBaseURL, defaultLLMKeyEnv
+	}
+	// Only the anthropic provider gets the catalog's default model (F-0311):
+	// it would never exist on another vendor's endpoint.
+	if c.Model == "" && c.Provider == defaultLLMProvider {
 		c.Model = defaultModel()
 	}
 	if c.KeyEnv == "" {
-		c.KeyEnv = defaultLLMKeyEnv
+		c.KeyEnv = preset.keyEnv
 	}
-	if c.BaseURL == "" && c.Provider == llmProviderOpenAI {
-		c.BaseURL = "https://api.openai.com"
-	} else if c.BaseURL == "" {
-		c.BaseURL = defaultLLMBaseURL
+	if c.BaseURL == "" {
+		c.BaseURL = preset.baseURL
 	}
 	if c.MaxTokens == 0 {
 		c.MaxTokens = defaultLLMMaxTokens
