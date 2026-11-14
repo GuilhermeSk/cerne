@@ -1,0 +1,100 @@
+package cli
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/spectmpl"
+	"github.com/henriquesakata/cerne/internal/store"
+	"github.com/henriquesakata/cerne/internal/verbs"
+)
+
+// T-0006: a bug report (B-) is a feature-shaped card with a three-field spec
+// and no approve step when a human asked for it.
+
+func newBugCmd() *cobra.Command {
+	var dir string
+	cmd := &cobra.Command{
+		Use:   "bug",
+		Short: "Report corrections (B-) in the backend",
+	}
+	cmd.PersistentFlags().StringVar(&dir, "dir", "", "project directory (defaults to cwd)")
+	_ = cmd.PersistentFlags().MarkHidden("dir")
+	cmd.AddCommand(verbs.MarkChat(newBugNewCmd(&dir)))
+	return cmd
+}
+
+func newBugNewCmd(dir *string) *cobra.Command {
+	var module, fixes, facet, component, file, context, owner, priority, onBehalf string
+	var force bool
+	cmd := &cobra.Command{
+		Use:   "new <title>",
+		Short: "Report a bug; born approved when a human asked for it",
+		Long: "Creates a bug report (B-): a lightweight correction card with a three-section spec (Context, " +
+			"Steps to reproduce, Expected × actual) and the regression-test bar already filled. When the origin " +
+			"is a human — you at a terminal, or an agent relaying their words with --on-behalf — the card is " +
+			"born approved: start it right away. A bug an agent found by itself (no --on-behalf) is born " +
+			"candidate and waits for a human approve. Completing needs a real result.md; accept stays human. " +
+			"--fixes links the delivered feature and inherits its facets, components and capabilities.",
+		Example: "  cerne bug new \"<what breaks>\" --context \"<what happens, where>\" --on-behalf \"<the human's words>\"\n" +
+			"  cerne bug new \"<what breaks>\" --file report.md --fixes F-NNNN\n" +
+			"  cerne feature start B-NNNN     # no plan gate, no approve when the report is human",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runBugNew(cmd, *dir, args[0], module, fixes, facet, component, file, context, force, owner, priority, onBehalf)
+		},
+	}
+	cmd.Flags().StringVar(&module, "module", "", "module the bug belongs to")
+	cmd.Flags().StringVar(&fixes, "fixes", "", "delivered feature whose defect this corrects (F-0321); its tags are inherited")
+	cmd.Flags().StringVar(&facet, "facet", "", "facets (CSV; closed set: infra,code,data,process,auth)")
+	cmd.Flags().StringVar(&component, "component", "", "components (CSV; subsystem/tool, e.g. gitback,materialize)")
+	cmd.Flags().StringVar(&file, "file", "", "file with the full report (defaults to piped stdin)")
+	cmd.Flags().StringVar(&context, "context", "", "what happens and where (1-3 sentences), seeded into the Context section")
+	cmd.Flags().BoolVar(&force, "force", false, "bypass the duplicate-registration guard (F-0147) for a consciously distinct problem")
+	cmd.Flags().StringVar(&owner, "owner", "", "responsible handle (free text, F-0204)")
+	cmd.Flags().StringVar(&priority, "priority", "", "priority (closed set: p0,p1,p2,p3, F-0204)")
+	cmd.Flags().StringVar(&onBehalf, "on-behalf", "", onBehalfHelp)
+	return cmd
+}
+
+func runBugNew(cmd *cobra.Command, dir, title, module, fixes, facet, component, file, context string, force bool, owner, priority, onBehalf string) error {
+	if cmd.Flags().Changed("on-behalf") && strings.TrimSpace(onBehalf) == "" {
+		return app.ErrOnBehalfEmpty
+	}
+	body, err := readOptionalBody(cmd, file)
+	if err != nil {
+		return err
+	}
+	hasBody, hasContext := strings.TrimSpace(body) != "", strings.TrimSpace(context) != ""
+	if hasBody && hasContext {
+		return fmt.Errorf("--file/stdin and --context are mutually exclusive: the full report already carries the context")
+	}
+	if !hasBody && !hasContext {
+		return errFeatureContextRequired
+	}
+	ctx, err := resolveProject(dir)
+	if err != nil {
+		return err
+	}
+	specBody := body
+	if hasContext {
+		specBody = spectmpl.BugBodyIn(store.DocsLanguage(ctx.repoDir), context, "", "")
+	}
+	f, err := app.CreateBugWithSpec(ctx.repoDir, ctx.projDir, title, module, strings.TrimSpace(fixes),
+		splitInforms(facet), splitInforms(component), specBody, force, owner, priority, onBehalf, app.DocAuthor{})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "%s created (%s) with its report as the spec. Run 'cerne pull' to materialize it locally.\n", f.ID, f.State)
+	if f.State == domain.StateApproved {
+		fmt.Fprintf(cmd.OutOrStdout(), "Next step: the human report is the approval — run 'cerne feature start %s' now, no plan needed.\n", f.ID)
+		return nil
+	}
+	imps := printApproveReadiness(cmd.OutOrStdout(), ctx.repoDir, ctx.projDir, f.ID)
+	printNewCardNextStep(cmd.OutOrStdout(), ctx, f, hasContext, imps)
+	return nil
+}

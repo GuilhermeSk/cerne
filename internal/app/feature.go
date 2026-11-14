@@ -287,6 +287,29 @@ func (n newFeature) mint(repoDir string) (store.Feature, string, error) {
 			}
 		}
 		state := domain.StateCandidate
+		facets, components := n.facets, n.components
+		var capabilities []string
+		if prefix == "B" {
+			// T-0006: a human report is its own approval; a bug the agent found
+			// waits for the human. --fixes lends the target's tags where the
+			// caller gave none.
+			if n.origin == "human" {
+				state = domain.StateApproved
+			}
+			if fixes != "" {
+				tgt, err := store.LoadFeature(repoDir, fixes)
+				if err != nil {
+					return err
+				}
+				if len(facets) == 0 {
+					facets = tgt.Facets
+				}
+				if len(components) == 0 {
+					components = tgt.Components
+				}
+				capabilities = tgt.Capabilities
+			}
+		}
 		if prefix == "T" {
 			// A task is born approved: its human gate is the parent PRD's, which
 			// therefore must be committed (past candidacy) itself.
@@ -301,20 +324,21 @@ func (n newFeature) mint(repoDir string) (store.Feature, string, error) {
 		}
 		now := time.Now().UTC()
 		f = store.Feature{
-			ID:         id,
-			Title:      title,
-			Module:     module,
-			Parent:     parent,
-			Fixes:      fixes,
-			State:      state,
-			Facets:     n.facets,
-			Components: n.components,
-			Owner:      n.owner,
-			Priority:   n.priority,
-			FromIdea:   n.fromIdea,
-			Origin:     n.origin,
-			CreatedAt:  now,
-			UpdatedAt:  now,
+			ID:           id,
+			Title:        title,
+			Module:       module,
+			Parent:       parent,
+			Fixes:        fixes,
+			State:        state,
+			Facets:       facets,
+			Components:   components,
+			Capabilities: capabilities,
+			Owner:        n.owner,
+			Priority:     n.priority,
+			FromIdea:     n.fromIdea,
+			Origin:       n.origin,
+			CreatedAt:    now,
+			UpdatedAt:    now,
 		}
 		if err := store.SaveFeature(repoDir, f); err != nil {
 			return err
@@ -351,6 +375,9 @@ func (n newFeature) mint(repoDir string) (store.Feature, string, error) {
 		}
 		if n.onBehalf != "" {
 			payload["on_behalf"] = n.onBehalf
+		}
+		if prefix == "B" && state == domain.StateApproved {
+			payload["approved"] = "by report"
 		}
 		if forced {
 			// The guard saw live similars and --force overrode it (F-0147) —
