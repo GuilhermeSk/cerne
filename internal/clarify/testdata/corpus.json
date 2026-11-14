@@ -484,6 +484,22 @@
       ],
       "question": "o bloco `[gates] accept = \"auto\"` continua humano?",
       "options": []
+    },
+    {
+      "name": "B-0001: a lone backtick in the question does not break the marker",
+      "content": "x [ESCLARECER: usar ` aqui?] y",
+      "spans": [
+        {
+          "raw": "[ESCLARECER: usar ` aqui?]",
+          "offset": 2,
+          "resolved": false
+        }
+      ]
+    },
+    {
+      "name": "B-0001: an unclosed marker followed by many code spans is not a marker",
+      "content": "[ESCLARECER: `a` `a` `a` `a` `a` `a` `a` `a` `a` `a` `a` `a` x\n",
+      "spans": []
     }
   ],
   "_resolve_comment": "Resolution parity (F-0193): each case rewrites ONE anchored open marker to its resolved form. Go replays via clarify.Resolve + manual splice (TestResolveCorpus); TS replays via resolveMarker (Clarify.test.tsx). want=null means the rewriter must refuse (anchor mismatch or already resolved).",

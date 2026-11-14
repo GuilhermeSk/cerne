@@ -86,7 +86,9 @@ var resolvedWords = func() map[string]bool {
 // a bracket, so a blank line (paragraph end) stops the match, and no
 // continuation line contains an opening bracket, so a marker that starts on a
 // LATER line is never absorbed. The body never contains a closing bracket outside an inline code span
-// (a backtick pair on the first line, B-0001),
+// (a closed backtick pair on the first line, or a last unpaired backtick —
+// unambiguous on purpose: a backtick matching two branches backtracks
+// exponentially in JS, B-0001),
 // which also keeps prefix words ([ESCLARECEDOR], [CLARIFIER]) out. Explicit
 // classes, never \s: RE2 and JS disagree on it and the parity corpus locks the
 // two together.
@@ -96,7 +98,7 @@ var resolvedWords = func() map[string]bool {
 // first-line class allows "["); markdown block boundaries (list item,
 // heading, table row, quote) are not detected, so an UNCLOSED marker absorbs the following bracket-free lines of its paragraph; upgrade =
 // span via mdast (a real markdown parse).
-var markerRe = regexp.MustCompile(`\[«?(` + markerWords() + `)»?(?::[ \t]*(` + "(?:`[^`\\n]*`|[^\\]\\n])*" + `(?:\n[ \t]*[^\[\] \t\r\n][^\[\]\n]*)*))?\]`)
+var markerRe = regexp.MustCompile(`\[«?(` + markerWords() + `)»?(?::[ \t]*(` + "(?:`[^`\\n]*`|[^\\]\\n`])*(?:`[^`\\]\\n]*)?" + `(?:\n[ \t]*[^\[\] \t\r\n][^\[\]\n]*)*))?\]`)
 
 // lineBreakRe is a soft line break with the indentation around it: markdown
 // renders it as one space, and so does the parsed body.

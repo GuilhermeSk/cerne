@@ -9,6 +9,13 @@ import { correctMarker, countOpen, markerSpans, parseClarification, resolveMarke
 afterEach(cleanup)
 
 describe('clarify helpers', () => {
+  it('marcador sem fecho com muitos spans de código não trava (B-0001)', () => {
+    // n=16 já passa de 50 ms com a alternância ambígua; 200 trava a aba.
+    const t0 = performance.now()
+    expect(markerSpans('[ESCLARECER: ' + '`a` '.repeat(16) + 'x\n')).toEqual([])
+    expect(performance.now() - t0).toBeLessThan(50)
+  })
+
   it('parseClarification decompõe as formas do marcador', () => {
     expect(parseClarification('[ESCLARECER: qual formato?]')).toEqual({
       question: 'qual formato?',

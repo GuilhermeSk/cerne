@@ -35,7 +35,7 @@ const MARKER_WORDS = VOCABS.flatMap((v) => [v.open, v.resolved]).sort(
 const RESOLVED_WORDS = new Set(VOCABS.map((v) => v.resolved))
 
 // Mesma forma do Go: palavra do catálogo com guilhemets legados opcionais e
-// corpo opcional (sem ] fora de código inline — par de crases na 1ª linha, B-0001) que atravessa quebras simples de linha dentro do
+// corpo opcional (sem ] fora de código inline — par de crases fechado na 1ª linha, ou uma última crase solta; sem ambiguidade de propósito, B-0001) que atravessa quebras simples de linha dentro do
 // parágrafo — cada continuação precisa de um não-branco que não seja colchete depois
 // da indentação (linha em branco encerra) e nenhuma continuação contém [, então
 // um marcador que começa numa linha POSTERIOR nunca é absorvido (F-0317). Exclui prefixos como
@@ -46,7 +46,7 @@ const RESOLVED_WORDS = new Set(VOCABS.map((v) => v.resolved))
 // então marcador SEM fecho absorve as linhas seguintes sem [ do parágrafo;
 // upgrade = span via mdast.
 export const CLARIFY_RE = new RegExp(
-  `\\[«?(${MARKER_WORDS.join('|')})»?(?::[ \\t]*((?:\`[^\`\\n]*\`|[^\\]\\n])*(?:\\n[ \\t]*[^\\[\\] \\t\\r\\n][^\\[\\]\\n]*)*))?\\]`,
+  `\\[«?(${MARKER_WORDS.join('|')})»?(?::[ \\t]*((?:\`[^\`\\n]*\`|[^\\]\\n\`])*(?:\`[^\`\\]\\n]*)?(?:\\n[ \\t]*[^\\[\\] \\t\\r\\n][^\\[\\]\\n]*)*))?\\]`,
   'g',
 )
 
