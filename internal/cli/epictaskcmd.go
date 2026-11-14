@@ -138,11 +138,13 @@ func runFeatureLikeNew(cmd *cobra.Command, dir, title, module, parent, facet, co
 	}
 	if hasBody {
 		fmt.Fprintf(cmd.OutOrStdout(), "✓ %s created (%s) with spec — already synced. Run 'cerne pull' to materialize it locally.\n", f.ID, f.State)
-		printApproveReadiness(cmd.OutOrStdout(), ctx.repoDir, ctx.projDir, f.ID)
+		imps := printApproveReadiness(cmd.OutOrStdout(), ctx.repoDir, ctx.projDir, f.ID)
+		printNewCardNextStep(cmd.OutOrStdout(), f, false, imps)
 		return nil
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "%s created (%s) with its context seeded into the spec. Next step: complete the spec ('cerne pull' materializes the draft).\n", f.ID, f.State)
+	fmt.Fprintf(cmd.OutOrStdout(), "%s created (%s) with its context seeded into the spec.\n", f.ID, f.State)
 	// The seeded spec is already a written one for lint and --check (F-0308).
-	printApproveReadiness(cmd.OutOrStdout(), ctx.repoDir, ctx.projDir, f.ID)
+	imps := printApproveReadiness(cmd.OutOrStdout(), ctx.repoDir, ctx.projDir, f.ID)
+	printNewCardNextStep(cmd.OutOrStdout(), f, true, imps)
 	return nil
 }
