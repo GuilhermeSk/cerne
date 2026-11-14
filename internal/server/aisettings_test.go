@@ -223,3 +223,46 @@ func TestAIRoutesAreLocalOnly(t *testing.T) {
 		}
 	}
 }
+
+// F-0414: the test runs the unsaved form. The typed key is used for that one
+// call, in memory: not stored, not logged, not echoed.
+func TestAIConnectionTestUsesTheUnsavedForm(t *testing.T) {
+	h, _ := aiServer(t)
+	var gotAuth, gotModel string
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		var body struct {
+			Model string `json:"model"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		gotModel = body.Model
+		w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer api.Close()
+
+	form := `{"provider":"openrouter","model":"m-1","base_url":"` + api.URL + `","key":"` + aiSecret + `"}`
+	_, body := aiDo(t, h, http.MethodPost, "/api/config/llm/test", form)
+	if ok, msg := aiResult(t, body); !ok {
+		t.Fatalf("unsaved byo-key test failed: %s", msg)
+	}
+	if gotAuth != "Bearer "+aiSecret || gotModel != "m-1" {
+		t.Fatalf("provider saw auth=%q model=%q", gotAuth, gotModel)
+	}
+	if strings.Contains(body, aiSecret) {
+		t.Fatalf("response echoes the key: %s", body)
+	}
+	// Nothing was stored: no credentials file, and a status read has no key.
+	_, status := aiDo(t, h, http.MethodGet, "/api/config/llm", "")
+	if strings.Contains(status, aiSecret) || strings.Contains(status, `"set":true`) {
+		t.Fatalf("the typed key was kept: %s", status)
+	}
+	if v, _, _ := project.ResolveAPIKey("OPENROUTER_API_KEY"); v != "" {
+		t.Fatal("the typed key reached the credentials file")
+	}
+
+	// A failing call does not echo the key either.
+	_, body = aiDo(t, h, http.MethodPost, "/api/config/llm/test", `{"provider":"openrouter","model":"m","base_url":"http://127.0.0.1:1","key":"`+aiSecret+`"}`)
+	if ok, _ := aiResult(t, body); ok || strings.Contains(body, aiSecret) {
+		t.Fatalf("unreachable endpoint: %s", body)
+	}
+}

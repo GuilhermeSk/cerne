@@ -349,6 +349,9 @@ type LLMConfig struct {
 	// OpenAI-compatible gateway or model that ignores or rejects tools): the
 	// chat then has no execution channel and degrades honestly (F-0323 C7).
 	NoFunctionCalling bool `toml:"no_function_calling,omitempty"`
+	// TestKey is a key typed in the UI and used for one connection test, in
+	// memory only: never read from or written to a file (F-0414).
+	TestKey string `toml:"-"`
 }
 
 // LLM defaults applied by withDefaults when a byo-key field is empty/zero.

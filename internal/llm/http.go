@@ -104,6 +104,9 @@ func NewProvider(cfg project.LLMConfig) (Provider, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.TestKey != "" {
+		key = cfg.TestKey
+	}
 	if key == "" && cfg.Provider != providerCompatible {
 		return nil, fmt.Errorf("%w: set the %s environment variable or save the key in Settings", ErrAPIKeyMissing, cfg.KeyEnv)
 	}

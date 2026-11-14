@@ -73,12 +73,21 @@ func loadLLMConfig(projDir string) (project.LLMConfig, error) {
 }
 
 // handleLLMTest makes one minimal call in the requested mode (default: the
-// resolved one) and answers {ok} or {ok:false,error} — the provider's own error
+// resolved one), optionally over an unsaved provider form whose key is used for
+// this call only and answers {ok} or {ok:false,error} — the provider's own error
 // already names the fix (login command, install hint, variable). Not a 5xx: a
 // failed connection is the answer, not a server fault.
 func handleLLMTest(w http.ResponseWriter, r *http.Request, projDir string) {
 	var req struct {
-		Mode string `json:"mode"`
+		Mode     string `json:"mode"`
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+		BaseURL  string `json:"base_url"`
+		Key      string `json:"key"`
+	}
+	if !sameOriginJSON(r) {
+		writeJSON(w, http.StatusForbidden, errorBody("cross-origin or non-JSON request refused"))
+		return
 	}
 	if r.ContentLength != 0 {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -97,6 +106,14 @@ func handleLLMTest(w http.ResponseWriter, r *http.Request, projDir string) {
 	}
 	if req.Mode != "" {
 		cfg.Mode = req.Mode
+	}
+	if req.Provider != "" {
+		// The unsaved form (F-0414): test what is on screen, not what is saved.
+		// The base URL and key variable restart from this provider's presets.
+		cfg.Provider, cfg.Model, cfg.BaseURL, cfg.KeyEnv, cfg.TestKey = req.Provider, req.Model, req.BaseURL, "", req.Key
+		if req.Mode == "" {
+			cfg.Mode = llm.ModeByoKey
+		}
 	}
 	prov, err := newLLMProvider(cfg)
 	if errors.Is(err, llm.ErrNoProviderForDelegation) {
