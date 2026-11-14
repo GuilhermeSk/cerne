@@ -9,6 +9,8 @@ import (
 
 	"github.com/henriquesakata/cerne/internal/domain"
 	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/lint"
+	"github.com/henriquesakata/cerne/internal/project"
 	"github.com/henriquesakata/cerne/internal/store"
 )
 
@@ -344,6 +346,48 @@ func TestEpicCloseRosterListsChildBars(t *testing.T) {
 		if !strings.Contains(roster, want) {
 			t.Errorf("roster lacks %q:\n%s", want, roster)
 		}
+	}
+}
+
+// TestTaskGauntletRulesQuietInLightMode (crit. 5, F-0364): the task's bar
+// rules are result-missing-gauntlet findings, so light mode drops them like
+// the rest — at the complete gate and in the project lint — while with the
+// Gauntlet on the same backend is charged.
+func TestTaskGauntletRulesQuietInLightMode(t *testing.T) {
+	for _, mode := range []string{"", "off"} {
+		t.Run("gauntlet="+mode, func(t *testing.T) {
+			repoDir, projDir, _ := newFeatureBackend(t)
+			saveGauntlet(t, projDir, mode)
+			// A parent with no named bar, a task inheriting from it: both charged.
+			seedWithSpec(t, repoDir, store.Feature{ID: "E-0001", State: domain.StateImplemented}, taskBody+exemptTaskBar)
+			seedWithSpec(t, repoDir, store.Feature{ID: "T-0002", Parent: "E-0001", State: domain.StateImplemented}, taskBody+"Barra: herdada de E-0001\n")
+			for _, id := range []string{"E-0001", "T-0002"} {
+				if err := store.AppendEvent(repoDir, domain.NewEvent(id, "feature.completed", nil, "local")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cfg, _, err := project.LoadConfig(projDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			gateErr := CheckResultRecord(repoDir, reload(t, repoDir, "T-0002"), cfg.Gates)
+			findings, err := ProjectLint(repoDir, projDir, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var charged []string
+			for _, f := range findings {
+				if f.Rule == lint.RuleResultMissingGauntlet {
+					charged = append(charged, f.Entity)
+				}
+			}
+			if mode == "off" && (gateErr != nil || len(charged) != 0) {
+				t.Fatalf("light mode: gate err = %v, lint charged %v; want both quiet", gateErr, charged)
+			}
+			if mode == "" && (gateErr == nil || len(charged) != 2) {
+				t.Fatalf("Gauntlet on: gate err = %v, lint charged %v; want both charged", gateErr, charged)
+			}
+		})
 	}
 }
 
