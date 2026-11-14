@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
+	"unicode/utf8"
 )
 
 // ModeClaudeCLI is the provider mode that shells to the Claude Code CLI
@@ -109,6 +111,32 @@ type runner func(ctx context.Context, dir, name string, args []string, stdin str
 // is echoed in the error so a verbose CLI does not flood the message.
 const maxOutputBytes = 512
 
+var ansiRE = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
+
+// tail strips ANSI escapes and keeps the LAST n bytes: a CLI prints its banner
+// first and the real error last (Codex), so the head is the useless end.
+func tail(data []byte, n int) string {
+	s := strings.TrimSpace(ansiRE.ReplaceAllString(string(data), ""))
+	if len(s) <= n {
+		return s
+	}
+	s = s[len(s)-n:]
+	for len(s) > 0 && !utf8.RuneStart(s[0]) {
+		s = s[1:]
+	}
+	return "…" + s
+}
+
+// cliFailure wraps a failed CLI call. A call that ended on the context (the
+// deadline passed, or it was canceled) timed out: the login hint would send the
+// user to the wrong fix, so only a real failure keeps it.
+func cliFailure(ctx context.Context, start time.Time, sentinel error, what string, err error, hint string) error {
+	if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: %s timed out after %d seconds", sentinel, what, int(time.Since(start).Round(time.Second)/time.Second))
+	}
+	return fmt.Errorf("%w: failed to call %s: %w — %s", sentinel, what, err, hint)
+}
+
 // describeExit builds the description of a non-zero exit: it prefers stderr
 // (the convention), falls back to stdout — labeled, so the reader knows which
 // pipe it came from — when stderr is empty, and says so explicitly when
@@ -117,10 +145,10 @@ const maxOutputBytes = 512
 // ended in a dangling colon and hid the one line naming the cause.
 func describeExit(name, state string, stdout, stderr []byte) string {
 	if len(bytes.TrimSpace(stderr)) > 0 {
-		return fmt.Sprintf("%q exited with %s: %s", name, state, truncate(stderr, maxOutputBytes))
+		return fmt.Sprintf("%q exited with %s: %s", name, state, tail(stderr, maxOutputBytes))
 	}
 	if len(bytes.TrimSpace(stdout)) > 0 {
-		return fmt.Sprintf("%q exited with %s (stdout): %s", name, state, truncate(stdout, maxOutputBytes))
+		return fmt.Sprintf("%q exited with %s (stdout): %s", name, state, tail(stdout, maxOutputBytes))
 	}
 	return fmt.Sprintf("%q exited with %s (no output)", name, state)
 }
@@ -264,12 +292,13 @@ func (p *cliProvider) Complete(ctx context.Context, prompt string) (string, erro
 	} else {
 		args = append(args, oneShotIsolation...)
 	}
+	start := time.Now()
 	out, stderr, err := p.run(ctx, p.dir, p.bin, args, prompt)
 	if err != nil && isUnknownFlag(err) {
 		out, stderr, err = p.run(ctx, p.dir, p.bin, base, prompt)
 	}
 	if err != nil {
-		return "", fmt.Errorf("%w: failed to call Claude Code (claude -p): %w — check 'claude /login' (subscription) or use [llm] mode=\"byo-key\"", ErrClaudeCLI, err)
+		return "", cliFailure(ctx, start, ErrClaudeCLI, "Claude Code (claude -p)", err, "check 'claude /login' (subscription) or use [llm] mode=\"byo-key\"")
 	}
 	if s := strings.TrimSpace(stderr); agentic && s != "" {
 		log.Printf("claude-cli stderr: %s", truncate([]byte(s), maxOutputBytes))
@@ -302,12 +331,13 @@ func (p *cliProvider) completeCodex(ctx context.Context, prompt string) (string,
 		args = append(args, "-m", p.model)
 	}
 	args = append(args, "-")
+	start := time.Now()
 	if _, _, err := p.run(ctx, dir, p.bin, args, prompt); err != nil {
 		hint := "run 'codex login' (subscription) or use another mode"
 		if strings.Contains(err.Error(), "install Codex CLI") {
 			hint = "install Codex CLI and ensure it is on PATH"
 		}
-		return "", fmt.Errorf("%w: failed to call Codex CLI (codex exec): %w — %s", ErrCodexCLI, err, hint)
+		return "", cliFailure(ctx, start, ErrCodexCLI, "Codex CLI (codex exec)", err, hint)
 	}
 	b, err := os.ReadFile(outFile)
 	if err != nil || len(bytes.TrimSpace(b)) == 0 {
@@ -339,6 +369,7 @@ func (p *cliProvider) completeGemini(ctx context.Context, prompt string) (string
 	if p.model != "" {
 		args = append(args, "-m", p.model)
 	}
+	start := time.Now()
 	out, _, err := p.run(ctx, dir, p.bin, args, prompt)
 	if err != nil {
 		hint := "run gemini and sign in (or set GEMINI_API_KEY), then retry"
@@ -347,7 +378,7 @@ func (p *cliProvider) completeGemini(ctx context.Context, prompt string) (string
 		} else if m := exitStatusRE.FindStringSubmatch(err.Error()); m != nil && m[1] == "42" {
 			hint = "invalid input: the prompt or the model name was rejected"
 		}
-		return "", fmt.Errorf("%w: failed to call Gemini CLI: %w — %s", ErrGeminiCLI, err, hint)
+		return "", cliFailure(ctx, start, ErrGeminiCLI, "Gemini CLI", err, hint)
 	}
 	var r geminiReply
 	raw := strings.TrimSpace(out)

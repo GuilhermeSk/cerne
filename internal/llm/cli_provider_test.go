@@ -856,3 +856,48 @@ func TestNewProviderSubscriptionCLIs(t *testing.T) {
 		t.Fatalf("ListModels err = %v", err)
 	}
 }
+
+// F-0414: a call that ends on the context deadline is a timeout, not a missing
+// login; only a real non-zero exit keeps the login hint.
+func TestCLITimeoutIsNotALoginProblem(t *testing.T) {
+	for _, kind := range []string{ModeClaudeCLI, ModeCodexCLI, ModeGeminiCLI} {
+		p := &cliProvider{kind: kind, bin: "x", run: func(context.Context, string, string, []string, string) (string, string, error) {
+			return "", "", fmt.Errorf("run: %w", context.DeadlineExceeded)
+		}}
+		_, err := p.Complete(context.Background(), "q")
+		if err == nil || !strings.Contains(err.Error(), "timed out after") {
+			t.Fatalf("%s: err = %v, want a timeout message", kind, err)
+		}
+		if strings.Contains(err.Error(), "login") || strings.Contains(err.Error(), "sign in") {
+			t.Fatalf("%s: err = %v, must not blame the login", kind, err)
+		}
+	}
+}
+
+func TestCLICanceledContextIsATimeoutToo(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	p := &cliProvider{kind: ModeClaudeCLI, bin: "claude", run: func(context.Context, string, string, []string, string) (string, string, error) {
+		cancel()
+		return "", "", errors.New(`"claude" exited with signal: killed`)
+	}}
+	_, err := p.Complete(ctx, "q")
+	if err == nil || !strings.Contains(err.Error(), "timed out after") || strings.Contains(err.Error(), "/login") {
+		t.Fatalf("err = %v, want a timeout, no login hint", err)
+	}
+}
+
+// A Codex-like stderr: banner first, the real error last, colored.
+func TestDescribeExitKeepsTheTailAndStripsANSI(t *testing.T) {
+	banner := strings.Repeat("OpenAI Codex v0.1 banner line\n", 60)
+	stderr := banner + "\x1b[31mERROR:\x1b[0m stream disconnected: model \x1b[1mgpt-9\x1b[0m is not available\n"
+	got := describeExit("codex", "exit status 1", nil, []byte(stderr))
+	if !strings.Contains(got, "is not available") {
+		t.Fatalf("describeExit() = %q, lost the final error line", got)
+	}
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("describeExit() = %q, leaks ANSI escapes", got)
+	}
+	if len(got) > maxOutputBytes+200 {
+		t.Fatalf("describeExit() length = %d, want bounded", len(got))
+	}
+}
