@@ -96,14 +96,14 @@ var parityTable = []ParityRow{
 	{
 		Capability: "Work gate (deny unregistered edits)",
 		Claude:     "PreToolUse deny (cerne-work-gate.sh)",
-		Cursor:     degraded + ": no documented session key — enable the third-party toggle to reuse the .claude hooks",
+		Cursor:     ".claude PreToolUse deny, run by Cursor's third-party import (on by default; F-0428)",
 		Codex:      "PreToolUse deny, matcher Edit|Write",
 		Gemini:     "BeforeTool deny, matcher write_file|replace",
 	},
 	{
 		Capability: "Session→work binding",
 		Claude:     "PostToolUse/Bash (cerne-work-bind.sh)",
-		Cursor:     degraded + ": depends on the gate route above",
+		Cursor:     ".claude PostToolUse/Bash, via the third-party import (tool_output, F-0428)",
 		Codex:      "PostToolUse, matcher Bash",
 		Gemini:     "AfterTool, matcher run_shell_command (--format gemini)",
 	},
@@ -118,14 +118,14 @@ var parityTable = []ParityRow{
 	{
 		Capability: "Provenance reminder",
 		Claude:     "PostToolUse/Bash (provenance)",
-		Cursor:     degraded + ": via third-party toggle",
+		Cursor:     ".claude PostToolUse/Bash (provenance), via the third-party import → additional_context",
 		Codex:      "PostToolUse, matcher Bash",
 		Gemini:     degraded + ": AfterTool context envelope pending live validation",
 	},
 	{
 		Capability: "Stop closeout",
 		Claude:     "Stop hook (cerne-stop-closeout.sh)",
-		Cursor:     degraded + ": stop followup_message auto-submits — deferred",
+		Cursor:     ".claude Stop hook via the third-party import → followup_message, completed turns only",
 		Codex:      "Stop hook",
 		Gemini:     degraded + ": AfterAgent forces a retry — deferred",
 	},
@@ -139,7 +139,7 @@ var parityTable = []ParityRow{
 	{
 		Capability: "CERNE_ACTOR=agent (human gates)",
 		Claude:     "settings.json env block",
-		Cursor:     degraded + ": no per-project session env surface",
+		Cursor:     "CURSOR_AGENT=1 on Cursor's agent shells (seen in 3.25.6, undocumented) — no install",
 		Codex:      "shell_environment_policy.set in .codex/config.toml",
 		Gemini:     ".gemini/.env",
 	},

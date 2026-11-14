@@ -69,3 +69,54 @@ func TestGauntletRuleMatchesGolden(t *testing.T) {
 		t.Fatalf("GauntletRule is not the golden's GAUNTLET line:\n%s", GauntletRule)
 	}
 }
+
+// runReminderUnderCursor runs the SessionStart script as Cursor does (F-0428):
+// CURSOR_VERSION and CURSOR_PROJECT_DIR set, the hook payload on stdin.
+func runReminderUnderCursor(t *testing.T, binDir, projDir, stdin string) string {
+	t.Helper()
+	cmd := exec.Command("bash", "assets/cerne-register-reminder.sh")
+	cmd.Env = []string{"PATH=" + binDir + ":/usr/bin:/bin", "HOME=" + t.TempDir(),
+		"CURSOR_VERSION=3.25.6", "CURSOR_PROJECT_DIR=" + projDir}
+	cmd.Stdin = strings.NewReader(stdin)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("reminder script: %v", err)
+	}
+	return string(out)
+}
+
+// TestReminder_Cursor (F-0428 crit. 5): under Cursor the script prints only
+// what `cerne hook session-context --format cursor` prints (the JSON envelope),
+// handing it the payload; it stays silent without cerne, and when the
+// project's .cursor/hooks.json already wires the native sessionStart.
+func TestReminder_Cursor(t *testing.T) {
+	bin := t.TempDir()
+	stub := "#!/bin/sh\nprintf 'ARGS:%s STDIN:' \"$*\"; cat\n"
+	if err := os.WriteFile(filepath.Join(bin, "cerne"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	projDir := t.TempDir()
+	cursorPayload := `{"cursor_version":"3.25.6","session_id":"s"}`
+	if got, want := runReminderUnderCursor(t, bin, projDir, cursorPayload),
+		`ARGS:hook session-context --format cursor STDIN:`+cursorPayload; got != want {
+		t.Fatalf("under Cursor:\n got: %q\nwant: %q", got, want)
+	}
+	// A Claude Code session launched from a Cursor terminal may inherit
+	// Cursor's env, but its payload has no cursor_version: plain-text rules.
+	if got := runReminderUnderCursor(t, bin, projDir, `{"session_id":"s"}`); !strings.HasPrefix(got, "cerne project rules") {
+		t.Fatalf("non-Cursor payload under Cursor's env: want the plain-text rules, got %q", got)
+	}
+	if got := runReminderUnderCursor(t, t.TempDir(), projDir, cursorPayload); got != "" {
+		t.Fatalf("no cerne on PATH: want silence, got %q", got)
+	}
+	native := `{"hooks":{"sessionStart":[{"command":"sh -c 'cerne hook session-context --format cursor'"}]},"version":1}`
+	if err := os.MkdirAll(filepath.Join(projDir, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projDir, ".cursor", "hooks.json"), []byte(native), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := runReminderUnderCursor(t, bin, projDir, cursorPayload); got != "" {
+		t.Fatalf("native sessionStart wired: want silence, got %q", got)
+	}
+}

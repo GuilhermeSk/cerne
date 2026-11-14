@@ -137,3 +137,48 @@ func TestAgentIdentitiesNeverMine(t *testing.T) {
 		})
 	}
 }
+
+// TestCursorAgentShellIsAgent (F-0428 crit. 6): Cursor's agent shells carry
+// CURSOR_AGENT=1 and never the settings.json env block, so with no CERNE_ACTOR
+// the marker makes the process an agent; an explicit CERNE_ACTOR still decides.
+func TestCursorAgentShellIsAgent(t *testing.T) {
+	pinMachine(t, "alice", "m1")
+	t.Setenv("CURSOR_AGENT", "1")
+	t.Setenv("CERNE_ACTOR", "")
+	if got := EventActor(); got != "agent:alice@m1" {
+		t.Errorf("EventActor = %q, want agent:alice@m1", got)
+	}
+	if got := autoWorkActor(); got != "agent:alice@m1" {
+		t.Errorf("autoWorkActor = %q, want agent:alice@m1", got)
+	}
+	if err := CheckHumanGate(project.GateHuman); !errors.Is(err, ErrHumanGate) {
+		t.Errorf("CheckHumanGate = %v, want ErrHumanGate", err)
+	}
+	if err := CheckHumanSetting("gates.gauntlet"); !errors.Is(err, ErrHumanGate) {
+		t.Errorf("CheckHumanSetting = %v, want ErrHumanGate", err)
+	}
+
+	t.Setenv("CERNE_ACTOR", "fulano")
+	if got := EventActor(); got != "fulano" {
+		t.Errorf("explicit actor: EventActor = %q, want fulano", got)
+	}
+	if err := CheckHumanGate(project.GateHuman); err != nil {
+		t.Errorf("explicit human actor: CheckHumanGate = %v, want nil", err)
+	}
+
+	t.Setenv("CERNE_ACTOR", "")
+	t.Setenv("CURSOR_AGENT", "0")
+	if err := CheckHumanGate(project.GateHuman); err != nil {
+		t.Errorf("CURSOR_AGENT=0: CheckHumanGate = %v, want nil", err)
+	}
+}
+
+// TestCursorAgentShellOrigin (F-0428 crit. 6): an entity a Cursor agent creates
+// without --on-behalf is the agent's own request, like one from Claude Code.
+func TestCursorAgentShellOrigin(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "")
+	t.Setenv("CURSOR_AGENT", "1")
+	if origin, _, err := resolveOrigin(""); err != nil || origin != "agent" {
+		t.Fatalf("resolveOrigin = %q, %v; want agent", origin, err)
+	}
+}

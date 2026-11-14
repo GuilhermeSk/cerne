@@ -1,0 +1,18 @@
+{
+  "conversation_id": "2cbcdf25-fae0-4ddd-abb5-8ce420078093",
+  "generation_id": "70707ea4-9dcb-4560-814d-61668d14a3f6",
+  "model": "grok-4.7",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "__PROJ__/ui/src/Backlog.tsx",
+    "content": "export const x = 1\n"
+  },
+  "tool_use_id": "call-8df43a22-f039-4d88-9d02-be40d11aa30c-42\nfc_4f6c2f95-cc01-98de-aa1f-9ce0c21b6944_0",
+  "session_id": "2cbcdf25-fae0-4ddd-abb5-8ce420078093",
+  "hook_event_name": "preToolUse",
+  "cursor_version": "3.25.6",
+  "workspace_roots": [
+    "__PROJ__"
+  ],
+  "transcript_path": "__CURSOR_HOME__/projects/Users-dev-project/agent-transcripts/2cbcdf25-fae0-4ddd-abb5-8ce420078093/2cbcdf25-fae0-4ddd-abb5-8ce420078093.jsonl"
+}

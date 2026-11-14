@@ -23,6 +23,7 @@ func TestMain(m *testing.M) {
 	// F-0414: never probe PATH for a subscription CLI (children inherit this).
 	os.Setenv("CERNE_NO_CLI_DETECT", "1")
 	os.Unsetenv("CERNE_ACTOR")
+	os.Unsetenv("CURSOR_AGENT") // Cursor's agent-shell marker counts as an agent too (F-0428)
 	dir, err := os.MkdirTemp("", "cerne-config-")
 	if err != nil {
 		panic(err)

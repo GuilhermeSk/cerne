@@ -40,6 +40,12 @@ type stopContext struct {
 	} `json:"hookSpecificOutput"`
 }
 
+// cursorFollowup is Cursor's native stop envelope: the message is submitted
+// as the next user turn, the equivalent of Claude Code's Stop context (F-0428).
+type cursorFollowup struct {
+	FollowupMessage string `json:"followup_message"`
+}
+
 func newHookStopCheckCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "stop-check",
@@ -57,6 +63,11 @@ func newHookStopCheckCmd() *cobra.Command {
 func runHookStopCheck(cmd *cobra.Command) {
 	in, err := decodeHookInput(cmd.InOrStdin())
 	if err != nil || in.SessionID == "" || in.StopHookActive {
+		return
+	}
+	// Cursor auto-submits the reminder as the next user message (F-0428):
+	// never after a turn the human aborted, or one that errored.
+	if in.cursor() && in.Cursor.Status != "completed" {
 		return
 	}
 	cfg, _, err := project.LoadConfig(in.CWD)
@@ -89,9 +100,15 @@ func runHookStopCheck(cmd *cobra.Command) {
 		return
 	}
 
-	var out stopContext
-	out.HookSpecificOutput.HookEventName = "Stop"
-	out.HookSpecificOutput.AdditionalContext = strings.Join(parts, "\n\n")
+	var out any
+	if in.cursor() {
+		out = cursorFollowup{FollowupMessage: strings.Join(parts, "\n\n")}
+	} else {
+		var sc stopContext
+		sc.HookSpecificOutput.HookEventName = "Stop"
+		sc.HookSpecificOutput.AdditionalContext = strings.Join(parts, "\n\n")
+		out = sc
+	}
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	if err := enc.Encode(out); err != nil {
 		fmt.Fprintln(cmd.ErrOrStderr(), err)

@@ -66,7 +66,7 @@ func TestCoveragePerProvider(t *testing.T) {
 		if g.Kind == "degraded" && g.Class == "providers" && g.Detail == "" {
 			t.Errorf("degraded capability gap %q lacks the reason", g.Name)
 		}
-		if g.Kind == "degraded" && g.Name == "Work gate (deny unregistered edits)" {
+		if g.Kind == "degraded" && g.Name == "Subagents with live board" {
 			cursorDegraded = true
 		}
 		if g.Kind == "missing" && g.Class == "providers" {
@@ -74,7 +74,7 @@ func TestCoveragePerProvider(t *testing.T) {
 		}
 	}
 	if !cursorDegraded {
-		t.Error("cursor's degraded parity capability (work gate) not reported")
+		t.Error("cursor's degraded parity capability (subagents) not reported")
 	}
 	if cursorMissing {
 		t.Error("detected provider must not report installable capabilities as missing")

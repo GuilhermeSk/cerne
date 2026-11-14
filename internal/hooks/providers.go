@@ -20,7 +20,7 @@ import (
 // failOpenCmd wraps a cerne hook invocation in the standard fail-open shell:
 // a missing binary or a crashing hook must never break the host session.
 func failOpenCmd(invocation string) string {
-	return "sh -c 'command -v cerne >/dev/null 2>&1 || exit 0; " + invocation + " 2>/dev/null || true'"
+	return "sh -c 'command -v cerne >/dev/null 2>&1 || PATH=\"${PATH:+$PATH:}$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; command -v cerne >/dev/null 2>&1 || exit 0; " + invocation + " 2>/dev/null || true'"
 }
 
 // commandEntry is the {type, command} leaf shared by the Claude-style hook
@@ -158,10 +158,10 @@ func installCursor(projDir string) []Result {
 		},
 	))
 
-	// Explicit degradations (R-0037) — reported, never silent.
+	// Not installed natively (R-0037) — reported, with what covers them, never silent.
 	results = append(results,
-		Result{Asset: "cursor: work-gate", Status: StatusSkipped, Note: "native preToolUse lacks a documented session key for binding — enable Cursor's \"Include third-party Plugins, Skills, and other configs\" setting to reuse the installed .claude hooks (identical envelope) for the full gate"},
-		Result{Asset: "cursor: CERNE_ACTOR", Status: StatusSkipped, Note: "no documented per-project session env — cerne's human gates cannot distinguish agent sessions on Cursor"},
+		Result{Asset: "cursor: work-gate", Status: StatusSkipped, Note: "not wired natively: Cursor runs the installed .claude hooks (work gate, session binding, provenance, stop closeout) through its third-party import, the \"Include Third-Party Plugins, Skills, and Other Configs\" setting (on by default); with it off, only the rules and the live board reach Cursor (F-0428)"},
+		Result{Asset: "cursor: CERNE_ACTOR", Status: StatusSkipped, Note: "nothing to install: Cursor marks its agent shells with CURSOR_AGENT=1 (seen in Cursor 3.25.6, undocumented), which cerne's human gates read as an agent (F-0428)"},
 		Result{Asset: "cursor: CERNE_PROVIDER", Status: StatusSkipped, Note: "no documented per-project session env — documents written from Cursor record their author as unknown unless CERNE_PROVIDER/CERNE_MODEL are exported in its shell"},
 		Result{Asset: "cursor: subagent-context", Status: StatusSkipped, Note: "subagentStart output has no additional_context — subagents start without the live board"},
 	)

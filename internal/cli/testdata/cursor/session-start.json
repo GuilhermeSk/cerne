@@ -1,0 +1,29 @@
+{
+  "conversation_id": "2cbcdf25-fae0-4ddd-abb5-8ce420078093",
+  "generation_id": "",
+  "model": "grok-4.7-high-fast",
+  "model_id": "grok-4.7",
+  "model_params": [
+    {
+      "id": "context",
+      "value": "256k"
+    },
+    {
+      "id": "reasoning_effort",
+      "value": "high"
+    },
+    {
+      "id": "fast",
+      "value": "true"
+    }
+  ],
+  "is_background_agent": false,
+  "composer_mode": "agent",
+  "session_id": "2cbcdf25-fae0-4ddd-abb5-8ce420078093",
+  "hook_event_name": "sessionStart",
+  "cursor_version": "3.25.6",
+  "workspace_roots": [
+    "__PROJ__"
+  ],
+  "transcript_path": null
+}
