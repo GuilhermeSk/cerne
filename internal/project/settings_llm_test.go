@@ -88,19 +88,46 @@ func TestLoadConfigFillsLLMFromHost(t *testing.T) {
 	}
 }
 
-func TestLoadConfigProjectLLMWinsPerField(t *testing.T) {
-	dir := llmProject(t, "\n[llm]\nmode = \"claude-cli\"\n")
-	for id, v := range map[string]string{"llm.mode": "codex-cli", "llm.model": "gpt-5"} {
+// F-0414 (B1): the host [llm] is a tuple. A project that defines a mode or a
+// provider stands alone — a host provider/base_url/model must never meet the
+// project's mode (a Groq endpoint would get another vendor's key).
+func TestLoadConfigProjectLLMStandsAlone(t *testing.T) {
+	dir := llmProject(t, "\n[llm]\nmode = \"byo-key\"\n")
+	for id, v := range map[string]string{"llm.mode": "codex-cli", "llm.provider": "compatible", "llm.model": "gpt-5", "llm.base_url": "http://groq.example/v1"} {
 		if err := SetSetting(dir, id, ScopeHost, v); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cfg, _, _ := LoadConfig(dir)
-	if cfg.LLM.Mode != "claude-cli" {
-		t.Fatalf("project mode must win, got %q", cfg.LLM.Mode)
+	if cfg.LLM.Mode != "byo-key" || cfg.LLM.Provider != "" || cfg.LLM.Model != "" || cfg.LLM.BaseURL != "" {
+		t.Fatalf("a project [llm] with a mode must not inherit host fields: %+v", cfg.LLM)
 	}
-	if cfg.LLM.Model != "gpt-5" {
-		t.Fatalf("an empty project field takes the host value, got %q", cfg.LLM.Model)
+	dir = llmProject(t, "\n[llm]\nprovider = \"openai\"\n")
+	SetSetting(dir, "llm.model", ScopeHost, "gpt-5")
+	SetSetting(dir, "llm.mode", ScopeHost, "byo-key")
+	cfg, _, _ = LoadConfig(dir)
+	if cfg.LLM.Mode != "" || cfg.LLM.Model != "" {
+		t.Fatalf("a project provider also stands alone: %+v", cfg.LLM)
+	}
+}
+
+// The overlay is a read-time view: saving a loaded config never writes the
+// host's values into the versioned .cernerc.
+func TestHostLLMOverlayIsNeverPersisted(t *testing.T) {
+	dir := llmProject(t, "")
+	SetSetting(dir, "llm.mode", ScopeHost, "codex-cli")
+	SetSetting(dir, "llm.model", ScopeHost, "gpt-5")
+	cfg, _, _ := LoadConfig(dir)
+	if cfg.LLM.Mode != "codex-cli" {
+		t.Fatalf("overlay missing: %+v", cfg.LLM)
+	}
+	out := t.TempDir()
+	if err := SaveConfig(out, cfg); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(out, ".cernerc"))
+	if strings.Contains(string(b), "codex-cli") || strings.Contains(string(b), "gpt-5") || strings.Contains(string(b), "[llm]") {
+		t.Fatalf("host values leaked into .cernerc:\n%s", b)
 	}
 }
 

@@ -352,6 +352,9 @@ type LLMConfig struct {
 	// TestKey is a key typed in the UI and used for one connection test, in
 	// memory only: never read from or written to a file (F-0414).
 	TestKey string `toml:"-"`
+	// inherited marks a [llm] filled from the host settings: a read-time view
+	// that SaveConfig never writes into the versioned .cernerc.
+	inherited bool
 }
 
 // LLM defaults applied by withDefaults when a byo-key field is empty/zero.
@@ -429,6 +432,9 @@ func (c LLMConfig) WithDefaults() LLMConfig {
 // would collide with when adding their own [llm] config. It writes a whole
 // file; edit an existing one via SetSetting/SetLLMMode.
 func SaveConfig(dir string, c Config) error {
+	if c.LLM.inherited {
+		c.LLM = LLMConfig{}
+	}
 	type wire struct {
 		ProjectID                string              `toml:"project_id"`
 		Backend                  string              `toml:"backend"`
@@ -571,9 +577,15 @@ func fillLLMFromHost(l *LLMConfig) {
 		return
 	}
 	tbl, _ := layer["llm"].(map[string]any)
+	// The host [llm] is a tuple (F-0414): a project that chose a mode or a
+	// provider stands alone, so a host endpoint never meets its credentials.
+	if l.Mode != "" || l.Provider != "" {
+		return
+	}
 	for field, dst := range map[string]*string{"mode": &l.Mode, "provider": &l.Provider, "model": &l.Model, "base_url": &l.BaseURL} {
 		if v, ok := tbl[field]; ok && *dst == "" && hasSettingType(declared("llm."+field), v) {
 			*dst = v.(string)
+			l.inherited = true
 		}
 	}
 }
