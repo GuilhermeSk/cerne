@@ -133,8 +133,10 @@ func TestApproveCheck_EnglishJudgeQuestionForms(t *testing.T) {
 	}
 }
 
-// TestStaticGuidance_BilingualCLI (F-0418 crit. 6): the feature new reminder
-// and the transition help name the English form first.
+// TestStaticGuidance_BilingualCLI (F-0418 crit. 6): the transition help names
+// the English form first. The feature new reminder this test also read is
+// retired (F-0426): the CLI's Next step block names no bar form — the
+// approve readiness line and --check teach it in the project's language.
 func TestStaticGuidance_BilingualCLI(t *testing.T) {
 	before := func(name, s, a, b string) {
 		t.Helper()
@@ -143,14 +145,6 @@ func TestStaticGuidance_BilingualCLI(t *testing.T) {
 			t.Errorf("%s: want %q before %q:\n%s", name, a, b, s)
 		}
 	}
-	reminder, err := execCerneStdin(t, hookJSON(t, "sess-lang", "/tmp/proj", "Bash",
-		map[string]any{"command": `cerne feature new "Thing" --context "why"`},
-		map[string]any{"stdout": "F-0042 created (candidate) with its context seeded into the spec."}),
-		"hook", "lifecycle-reminder")
-	if err != nil {
-		t.Fatalf("lifecycle-reminder: %v\n%s", err, reminder)
-	}
-	before("feature new reminder", reminder, "`Bar:`", "`Barra:`")
 	complete, _ := execCerne(t, "feature", "complete", "--help")
 	before("complete help", complete, `"criterion N"`, `"critério N"`)
 	approve, _ := execCerne(t, "feature", "approve", "--help")

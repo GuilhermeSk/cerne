@@ -2,6 +2,8 @@ package hooks
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -196,16 +198,6 @@ func TestInstall_MinimalDiff_AppendsToExistingPostToolUse(t *testing.T) {
           }
         ]
       }`
-	// The lifecycle reminder block (F-0170), appended after work-bind.
-	lifecycleBlock := `      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/cerne-lifecycle-reminder.sh\""
-          }
-        ]
-      }`
 	// The SessionStart reminder block (F-0139), inserted as a new member of the
 	// hooks object after PostToolUse.
 	ssBlock := `    "SessionStart": [
@@ -269,7 +261,7 @@ func TestInstall_MinimalDiff_AppendsToExistingPostToolUse(t *testing.T) {
 	// bracket; the SessionStart, SubagentStart and PreToolUse members are
 	// appended to the hooks object; the CERNE_ACTOR key is appended inside the
 	// existing inline env object. Nothing else moves.
-	want := strings.Replace(pre, "\n      }\n    ]", "\n      },\n"+bashBlock+",\n"+bindBlock+",\n"+lifecycleBlock+"\n    ]", 1)
+	want := strings.Replace(pre, "\n      }\n    ]", "\n      },\n"+bashBlock+",\n"+bindBlock+"\n    ]", 1)
 	want = strings.Replace(want, "\n    ]\n  }\n}", "\n    ],\n"+ssBlock+",\n"+sbBlock+",\n"+preBlock+",\n"+stopBlock+",\n"+pcBlock+"\n  }\n}", 1)
 	want = strings.Replace(want, `"env": {"GREETING": "Olá & tchau"},`,
 		"\"env\": {\"GREETING\": \"Olá & tchau\",\n    \"CERNE_ACTOR\": \"agent\"},", 1)
@@ -351,15 +343,6 @@ func TestInstall_MinimalDiff_ScenarioB(t *testing.T) {
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/cerne-work-bind.sh\""
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/cerne-lifecycle-reminder.sh\""
           }
         ]
       }
@@ -461,15 +444,6 @@ func TestInstall_MinimalDiff_ScenarioC(t *testing.T) {
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/cerne-work-bind.sh\""
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/cerne-lifecycle-reminder.sh\""
           }
         ]
       }
@@ -703,22 +677,42 @@ func TestInstall_ActorEnvIdempotent(t *testing.T) {
 	}
 }
 
-// TestInstall_WiresLifecycleReminder (F-0170 crit. 5): the lifecycle reminder
-// script is installed and wired as a PostToolUse/Bash entry, idempotently.
-func TestInstall_WiresLifecycleReminder(t *testing.T) {
+// TestInstall_NoLifecycleReminder (F-0426 crit. 6): the retired lifecycle
+// reminder is neither installed nor wired — the CLI prints that guidance —
+// and a settings.json wired before F-0426 keeps its old entry untouched (the
+// install only appends; the entry calls a silent no-op), idempotently.
+func TestInstall_NoLifecycleReminder(t *testing.T) {
+	const retired = "cerne-lifecycle-reminder.sh"
 	dir := t.TempDir()
 	if _, err := Install(dir); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".claude", "hooks", lifecycleScript)); err != nil {
-		t.Fatalf("lifecycle script not installed: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".claude", "hooks", retired)); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("retired lifecycle script installed: %v", err)
 	}
-	b, err := os.ReadFile(filepath.Join(dir, ".claude", "settings.json"))
+	settings := filepath.Join(dir, ".claude", "settings.json")
+	b, err := os.ReadFile(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), lifecycleScript) {
-		t.Fatalf("settings.json missing lifecycle wiring:\n%s", b)
+	if strings.Contains(string(b), retired) {
+		t.Fatalf("settings.json still wires the retired reminder:\n%s", b)
+	}
+
+	old := t.TempDir()
+	oldSettings := filepath.Join(old, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(oldSettings), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pre := `{"hooks": {"PostToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/` + retired + `\""}]}]}}`
+	if err := os.WriteFile(oldSettings, []byte(pre), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(old); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(oldSettings); strings.Count(string(b), retired) != 1 {
+		t.Fatalf("install touched the pre-F-0426 entry (want it once, untouched):\n%s", b)
 	}
 	results, err := Install(dir)
 	if err != nil {
