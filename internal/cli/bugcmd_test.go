@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -56,6 +58,76 @@ func TestBugNewAgentBornCandidate(t *testing.T) {
 	g, _ := store.LoadFeature(repoDir, "B-0002")
 	if g.State != domain.StateApproved || g.Origin != "human" {
 		t.Fatalf("bug = %+v, want approved human", g)
+	}
+}
+
+// A --file report without a valid bar line gets the pre-filled one; a report
+// that carries its own valid bar is left as written.
+func TestBugNewFileBar(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "")
+	projDir, _, repoDir := setupProject(t)
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	spec := func(id string) string {
+		raw, err := os.ReadFile(app.FeatureDocPath(repoDir, id, "spec.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	noBar := write("a.md", "## Contexto\nfalha\n\n## Como reproduzir\n1. x\n\n## Esperado × obtido\ny\n")
+	if out, err := execCerne(t, "bug", "new", "Sem barra", "--file", noBar, "--dir", projDir); err != nil {
+		t.Fatalf("bug new: %v\n%s", err, out)
+	}
+	if !strings.Contains(spec("B-0001"), "Barra: não aplicável (correção com teste de regressão)") {
+		t.Errorf("bar line not appended:\n%s", spec("B-0001"))
+	}
+	own := "Barra: não aplicável (typo de texto) — padrão alternativo: revisão visual"
+	withBar := write("b.md", "## Contexto\nfalha2\n\n"+own+"\n")
+	if out, err := execCerne(t, "bug", "new", "Com barra", "--file", withBar, "--dir", projDir); err != nil {
+		t.Fatalf("bug new: %v\n%s", err, out)
+	}
+	got := spec("B-0002")
+	if !strings.Contains(got, own) || strings.Count(got, "Barra:") != 1 {
+		t.Errorf("own bar must stay alone:\n%s", got)
+	}
+}
+
+// T-0006 criterion 7: accept stays human for a bug of human origin — an agent
+// is refused with ErrHumanGate and the state is untouched; a human reaches done.
+func TestAcceptBugStaysHuman(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "")
+	projDir, _, repoDir := setupProject(t)
+	if out, err := execCerne(t, "bug", "new", "Salvar quebra", "--context", "falha", "--dir", projDir); err != nil {
+		t.Fatalf("bug new: %v\n%s", err, out)
+	}
+	if out, err := execCerne(t, "feature", "start", "B-0001", "--dir", projDir); err != nil {
+		t.Fatalf("start: %v\n%s", err, out)
+	}
+	writeDoc(t, repoDir, "B-0001", "result.md", realDoc("B-0001", "Corrigido com teste de regressão."))
+	commitBackend(t, repoDir)
+	if out, err := execCerne(t, "feature", "complete", "B-0001", "--dir", projDir); err != nil {
+		t.Fatalf("complete: %v\n%s", err, out)
+	}
+	t.Setenv("CERNE_ACTOR", "agent")
+	if _, err := execCerne(t, "feature", "accept", "B-0001", "--dir", projDir); !errors.Is(err, app.ErrHumanGate) {
+		t.Fatalf("accept by an agent err = %v, want ErrHumanGate", err)
+	}
+	if f, _ := store.LoadFeature(repoDir, "B-0001"); f.State != domain.StateImplemented {
+		t.Fatalf("state after refused accept = %s, want implemented", f.State)
+	}
+	t.Setenv("CERNE_ACTOR", "")
+	if out, err := execCerne(t, "feature", "accept", "B-0001", "--dir", projDir); err != nil {
+		t.Fatalf("accept by a human: %v\n%s", err, out)
+	}
+	if f, _ := store.LoadFeature(repoDir, "B-0001"); f.State != domain.StateDone {
+		t.Fatalf("state = %s, want done", f.State)
 	}
 }
 

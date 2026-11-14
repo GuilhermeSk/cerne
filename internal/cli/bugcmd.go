@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/doccheck"
 	"github.com/henriquesakata/cerne/internal/domain"
 	"github.com/henriquesakata/cerne/internal/spectmpl"
 	"github.com/henriquesakata/cerne/internal/store"
@@ -80,9 +81,14 @@ func runBugNew(cmd *cobra.Command, dir, title, module, fixes, facet, component, 
 	if err != nil {
 		return err
 	}
+	lang := store.DocsLanguage(ctx.repoDir)
 	specBody := body
 	if hasContext {
-		specBody = spectmpl.BugBodyIn(store.DocsLanguage(ctx.repoDir), context, "", "")
+		specBody = spectmpl.BugBodyIn(lang, context, "", "")
+	} else if _, err := doccheck.SpecBarIn([]byte(body), lang); err != nil {
+		// A born-approved report never meets the approve gate: give it the
+		// regression-test exemption unless the file brought a valid bar.
+		specBody = strings.TrimRight(body, "\n") + "\n\n" + spectmpl.BugBarIn(lang) + "\n"
 	}
 	f, err := app.CreateBugWithSpec(ctx.repoDir, ctx.projDir, title, module, strings.TrimSpace(fixes),
 		splitInforms(facet), splitInforms(component), specBody, force, owner, priority, onBehalf, app.DocAuthor{})

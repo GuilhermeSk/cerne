@@ -13,6 +13,14 @@ var bugBar = map[doclang.Lang]string{
 	doclang.EN: "Bar: not applicable (fix with a regression test) — alternative standard: a red regression test before the fix and green after",
 }
 
+// BugBarIn is the pre-filled bar line of a bug report in language l.
+func BugBarIn(l doclang.Lang) string {
+	if b, ok := bugBar[l]; ok {
+		return b
+	}
+	return bugBar[doclang.PT]
+}
+
 var bugGuide = map[doclang.Lang][3]string{
 	doclang.PT: {"O que acontece e onde (versão, comando, tela).", "Passos numerados até o defeito.", "O que deveria acontecer × o que aconteceu."},
 	doclang.EN: {"What happens and where (version, command, screen).", "Numbered steps to the defect.", "What should happen × what happened."},
