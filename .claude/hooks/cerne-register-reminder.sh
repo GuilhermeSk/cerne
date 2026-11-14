@@ -12,6 +12,9 @@
 # To turn it off for a process (eval, CI), set CERNE_NO_AGENT_HOOKS=1
 # instead of editing it (F-0360).
 [ -n "${CERNE_NO_AGENT_HOOKS:-}" ] && exit 0
+# A GUI host (Cursor, an IDE opened from the Dock) can run hooks with the
+# bare system PATH; look where cerne installs to as well (F-0428).
+command -v cerne >/dev/null 2>&1 || PATH="$PATH:$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin"
 # Cursor runs this script through its import of the .claude hooks and reads
 # the hook's stdout as JSON (CURSOR_VERSION is set on every Cursor hook): it
 # gets the same rules and live board in its own envelope (F-0428), unless the
