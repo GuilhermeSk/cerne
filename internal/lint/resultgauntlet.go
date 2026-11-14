@@ -98,15 +98,70 @@ func resultGauntletFindings(repoDir string, features []store.Feature, events []d
 			continue
 		}
 		legacy := !completedAfter(events, f.ID, resultGauntletStrictSince)
-		out = append(out, gauntletFinding(repoDir, f, legacy)...)
+		out = append(out, gauntletFinding(repoDir, f, features, legacy)...)
 	}
 	return out
 }
 
+// specOf is feature id's spec in the backend; nil when unreadable.
+func specOf(repoDir, id string) []byte {
+	spec, _ := os.ReadFile(filepath.Join(repoDir, "content", "features", id, "spec.md"))
+	return spec
+}
+
+// specBarRule is what a feature's own spec decides about its Gauntlet record
+// (T-0007). A task answers to its spec's bar line: exempt owes no record, an
+// inherited one owes none while its parent names a bar (why says when it does
+// not); a named one owes a round — and so does a parent whose tasks inherit
+// its bar. strict then means an exemption written in the result does not
+// count. Every other feature is read by its result alone, as before.
+func specBarRule(repoDir string, f store.Feature, features []store.Feature) (skip, strict bool, why string) {
+	spec := specOf(repoDir, f.ID)
+	if strings.HasPrefix(f.ID, "T-") {
+		if parent, ok := doccheck.BarInherited(spec); ok {
+			switch {
+			case parent != f.Parent:
+				return false, false, fmt.Sprintf("its bar is inherited from %s, which is not its parent", parent)
+			case !doccheck.BarNamed(specOf(repoDir, parent)):
+				return false, false, fmt.Sprintf("its bar is inherited from %s, whose spec names no bar of its own", parent)
+			}
+			return true, false, ""
+		}
+		if _, err := doccheck.SpecBar(spec); err == nil {
+			if doccheck.BarExempt(spec) {
+				return true, false, ""
+			}
+			strict = true
+		}
+	}
+	for _, c := range features {
+		if c.Parent != f.ID || !strings.HasPrefix(c.ID, "T-") {
+			continue // only the children's specs are read
+		}
+		if parent, ok := doccheck.BarInherited(specOf(repoDir, c.ID)); ok && parent == f.ID {
+			if !doccheck.BarNamed(spec) {
+				return false, false, fmt.Sprintf("task %s inherits its bar, but its spec names no bar of its own", c.ID)
+			}
+			strict = true
+		}
+	}
+	return false, strict, ""
+}
+
 // gauntletFinding is the per-feature result-missing-gauntlet check, shared by
-// the lint loop and CheckResult. legacy lets the pre-F-0304 predicate vouch.
-func gauntletFinding(repoDir string, f store.Feature, legacy bool) []Finding {
+// the lint loop and CheckResult. legacy lets the pre-F-0304 predicate vouch;
+// features is the backend's, for a parent's inheriting tasks (T-0007).
+func gauntletFinding(repoDir string, f store.Feature, features []store.Feature, legacy bool) []Finding {
 	resultPath := filepath.Join("content", "features", f.ID, "result.md")
+	skip, strict, why := specBarRule(repoDir, f, features)
+	if skip {
+		return nil
+	}
+	if why != "" {
+		return []Finding{{Rule: RuleResultMissingGauntlet, Entity: f.ID, File: filepath.ToSlash(resultPath),
+			Detail: fmt.Sprintf("%s (%s) — %s: an inherited bar needs the parent's named bar and its round in the parent's result; declare the task's own bar or name one on the parent", f.ID, f.Title, why)}}
+	}
+	legacy = legacy && !strict
 	result, err := os.ReadFile(filepath.Join(repoDir, resultPath))
 	if err != nil {
 		result = nil // absence of the doc is missing-gate-doc's job; here absence = no record
@@ -123,7 +178,15 @@ func gauntletFinding(repoDir string, f store.Feature, legacy bool) []Finding {
 	// always the result's own problem.
 	own := gauntletSections(StripHTMLComments(result))
 	for i, section := range append(own, gauntletSections(errataText(repoDir, f))...) {
-		p := parseGauntlet(section).problem(lang)
+		rec := parseGauntlet(section)
+		exemptInResult := strict && rec.exempt
+		if exemptInResult {
+			rec.exempt = false // the spec names a bar: the round is owed (T-0007)
+		}
+		p := rec.problem(lang)
+		if p != "" && exemptInResult {
+			p = "the spec names a bar, so an exemption written in the result does not count — " + p
+		}
 		// The legacy predicate vouches only for the result's own sections: an
 		// erratum is written now and answers to the strict reader.
 		if p == "" || (legacy && i < len(own) && legacyGauntletRecorded(section)) {
