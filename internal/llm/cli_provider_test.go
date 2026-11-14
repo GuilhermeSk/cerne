@@ -2,11 +2,13 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -682,5 +684,320 @@ func TestCLIProviderOneShotRetriesWithoutIsolationFlags(t *testing.T) {
 	}
 	if want := []string{"-p", "--output-format", "text"}; !reflect.DeepEqual(calls[1], want) {
 		t.Fatalf("retry args = %v, want %v", calls[1], want)
+	}
+}
+
+// codexFake plays `codex exec`: it records argv/stdin/cwd and writes reply to
+// the file named by -o, like the real CLI does.
+func codexFake(reply string, gotArgs *[]string, gotStdin, gotDir *string) runner {
+	return func(_ context.Context, dir, _ string, args []string, stdin string) (string, string, error) {
+		*gotArgs, *gotStdin, *gotDir = args, stdin, dir
+		for i, a := range args {
+			if a == "-o" {
+				if err := os.WriteFile(args[i+1], []byte(reply), 0o600); err != nil {
+					return "", "", err
+				}
+			}
+		}
+		return "noise on stdout", "", nil
+	}
+}
+
+func TestCodexCLIProvider(t *testing.T) {
+	var args []string
+	var stdin, dir string
+	p := &cliProvider{kind: ModeCodexCLI, bin: "codex", model: "gpt-5", run: codexFake("  the answer\n", &args, &stdin, &dir)}
+	out, err := p.Complete(context.Background(), "question?")
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if out != "the answer" {
+		t.Fatalf("out = %q, want the -o file content", out)
+	}
+	if stdin != "question?" {
+		t.Fatalf("stdin = %q", stdin)
+	}
+	if dir == "" {
+		t.Fatal("codex must run in an empty temp dir, not the project")
+	}
+	// F-0414 (B4): no tools, no user config, no AGENTS.md, no hosted search.
+	want := []string{"exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
+		"--ignore-user-config", "--ignore-rules", "--disable", "shell_tool", "--disable", "apps",
+		"-c", `web_search="disabled"`, "-c", "project_doc_max_bytes=0",
+		"-o", args[16], "-m", "gpt-5", "-"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Fatal("temp dir must be removed after the call")
+	}
+	// No model: no -m.
+	p.model = ""
+	if _, err := p.Complete(context.Background(), "q"); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range args {
+		if a == "-m" {
+			t.Fatalf("-m passed without a model: %v", args)
+		}
+	}
+}
+
+func TestCodexCLIErrorsNameTheFix(t *testing.T) {
+	for _, c := range []struct{ err, want string }{
+		{"could not run \"codex\" (install Codex CLI and ensure it is on PATH): x", "install Codex CLI"},
+		{"\"codex\" exited with exit status 1: not logged in", "codex login"},
+	} {
+		p := &cliProvider{kind: ModeCodexCLI, bin: "codex", run: func(context.Context, string, string, []string, string) (string, string, error) {
+			return "", "", errors.New(c.err)
+		}}
+		_, err := p.Complete(context.Background(), "q")
+		if !errors.Is(err, ErrCodexCLI) || errors.Is(err, ErrClaudeCLI) {
+			t.Fatalf("err = %v, want ErrCodexCLI only", err)
+		}
+		if !strings.Contains(err.Error(), c.want) || strings.Contains(err.Error(), "Claude") {
+			t.Fatalf("err = %v, want %q and no Claude wording", err, c.want)
+		}
+	}
+}
+
+func TestCodexCLIEmptyAnswerIsAnError(t *testing.T) {
+	var a []string
+	var s, d string
+	p := &cliProvider{kind: ModeCodexCLI, bin: "codex", run: codexFake("  ", &a, &s, &d)}
+	if _, err := p.Complete(context.Background(), "q"); !errors.Is(err, ErrCodexCLI) {
+		t.Fatalf("err = %v, want ErrCodexCLI", err)
+	}
+}
+
+func TestGeminiCLIProvider(t *testing.T) {
+	var args []string
+	var stdin, dir string
+	fake := func(_ context.Context, d, _ string, a []string, in string) (string, string, error) {
+		args, stdin, dir = a, in, d
+		return `{"response":" hello \n","stats":{}}`, "", nil
+	}
+	p := &cliProvider{kind: ModeGeminiCLI, bin: "gemini", model: "gemini-2.5-pro", run: fake}
+	out, err := p.Complete(context.Background(), "hi?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "hello" || stdin != "hi?" || dir == "" {
+		t.Fatalf("out=%q stdin=%q dir=%q", out, stdin, dir)
+	}
+	want := []string{"--output-format", "json", "--approval-mode", "plan", "-e", "none", "-m", "gemini-2.5-pro"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+	p.model = ""
+	p.Complete(context.Background(), "q")
+	if !reflect.DeepEqual(args, want[:6]) {
+		t.Fatalf("args without model = %v", args)
+	}
+}
+
+func TestGeminiCLIErrors(t *testing.T) {
+	run := func(out string, err error) runner {
+		return func(context.Context, string, string, []string, string) (string, string, error) { return out, "", err }
+	}
+	cases := []struct {
+		name string
+		run  runner
+		want string
+	}{
+		{"missing", run("", errors.New("could not run \"gemini\" (install Gemini CLI and ensure it is on PATH): x")), "install Gemini CLI"},
+		{"invalid input", run("", errors.New("\"gemini\" exited with exit status 42: bad")), "invalid input"},
+		{"login", run("", errors.New("\"gemini\" exited with exit status 1: auth")), "run gemini and sign in"},
+		{"bad json", run("not json", nil), "unreadable"},
+		{"json error", run(`{"error":{"message":"quota"}}`, nil), "quota"},
+	}
+	for _, c := range cases {
+		p := &cliProvider{kind: ModeGeminiCLI, bin: "gemini", run: c.run}
+		_, err := p.Complete(context.Background(), "q")
+		if !errors.Is(err, ErrGeminiCLI) || !strings.Contains(err.Error(), c.want) || strings.Contains(err.Error(), "Claude") {
+			t.Errorf("%s: err = %v, want ErrGeminiCLI containing %q", c.name, err, c.want)
+		}
+	}
+}
+
+func TestExecRunNamesTheMissingCLI(t *testing.T) {
+	for bin, want := range map[string]string{"cerne-no-such-claude": "install Claude Code", "cerne-no-such-codex": "install Codex CLI", "cerne-no-such-gemini": "install Gemini CLI"} {
+		_, _, err := execRun(context.Background(), "", bin, nil, "")
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want %q", bin, err, want)
+		}
+	}
+}
+
+func TestNewProviderSubscriptionCLIs(t *testing.T) {
+	for mode, kind := range map[string]string{ModeCodexCLI: ModeCodexCLI, ModeGeminiCLI: ModeGeminiCLI} {
+		for _, build := range []func() (Provider, error){
+			func() (Provider, error) { return NewProvider(project.LLMConfig{Mode: mode, Model: "m"}) },
+			func() (Provider, error) {
+				return NewAgentProvider(project.LLMConfig{Mode: mode, Model: "m"}, "/x", true)
+			},
+		} {
+			p, err := build()
+			cp, ok := p.(*cliProvider)
+			if err != nil || !ok || cp.kind != kind || cp.model != "m" || cp.agentTools != nil {
+				t.Fatalf("%s: %v %#v", mode, err, p)
+			}
+			if _, isTool := p.(ToolCaller); isTool {
+				t.Fatalf("%s must not be a ToolCaller (chat has no execution channel)", mode)
+			}
+		}
+	}
+	// No model configured: no Anthropic default leaks into -m.
+	p, _ := NewProvider(project.LLMConfig{Mode: ModeCodexCLI})
+	if m := p.(*cliProvider).model; m != "" {
+		t.Fatalf("model = %q, want empty", m)
+	}
+	if got := ConfiguredProviders(project.LLMConfig{Mode: ModeCodexCLI}); !reflect.DeepEqual(got, []string{"openai"}) {
+		t.Fatalf("codex providers = %v", got)
+	}
+	if got := ConfiguredProviders(project.LLMConfig{Mode: ModeGeminiCLI}); !reflect.DeepEqual(got, []string{"gemini"}) {
+		t.Fatalf("gemini providers = %v", got)
+	}
+	if _, err := ListModels(context.Background(), project.LLMConfig{Mode: ModeGeminiCLI}); !errors.Is(err, ErrNoListing) {
+		t.Fatalf("ListModels err = %v", err)
+	}
+}
+
+// F-0414: a call that ends on the context deadline is a timeout, not a missing
+// login; only a real non-zero exit keeps the login hint.
+func TestCLITimeoutIsNotALoginProblem(t *testing.T) {
+	for _, kind := range []string{ModeClaudeCLI, ModeCodexCLI, ModeGeminiCLI} {
+		p := &cliProvider{kind: kind, bin: "x", run: func(context.Context, string, string, []string, string) (string, string, error) {
+			return "", "", fmt.Errorf("run: %w", context.DeadlineExceeded)
+		}}
+		_, err := p.Complete(context.Background(), "q")
+		if err == nil || !strings.Contains(err.Error(), "timed out after") {
+			t.Fatalf("%s: err = %v, want a timeout message", kind, err)
+		}
+		if strings.Contains(err.Error(), "login") || strings.Contains(err.Error(), "sign in") {
+			t.Fatalf("%s: err = %v, must not blame the login", kind, err)
+		}
+	}
+}
+
+func TestCLICanceledContextIsATimeoutToo(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	p := &cliProvider{kind: ModeClaudeCLI, bin: "claude", run: func(context.Context, string, string, []string, string) (string, string, error) {
+		cancel()
+		return "", "", errors.New(`"claude" exited with signal: killed`)
+	}}
+	_, err := p.Complete(ctx, "q")
+	if err == nil || !strings.Contains(err.Error(), "timed out after") || strings.Contains(err.Error(), "/login") {
+		t.Fatalf("err = %v, want a timeout, no login hint", err)
+	}
+}
+
+// A Codex-like stderr: banner first, the real error last, colored.
+func TestDescribeExitKeepsTheTailAndStripsANSI(t *testing.T) {
+	banner := strings.Repeat("OpenAI Codex v0.1 banner line\n", 60)
+	stderr := banner + "\x1b[31mERROR:\x1b[0m stream disconnected: model \x1b[1mgpt-9\x1b[0m is not available\n"
+	got := describeExit("codex", "exit status 1", nil, []byte(stderr))
+	if !strings.Contains(got, "is not available") {
+		t.Fatalf("describeExit() = %q, lost the final error line", got)
+	}
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("describeExit() = %q, leaks ANSI escapes", got)
+	}
+	if len(got) > maxOutputBytes+200 {
+		t.Fatalf("describeExit() length = %d, want bounded", len(got))
+	}
+}
+
+// F-0414 (B4): Gemini runs under a system settings file (it overrides user and
+// project ones) that leaves it no tool, no MCP server and no context file.
+func TestGeminiRunsUnderLockedSettings(t *testing.T) {
+	var env []string
+	var settings map[string]any
+	var path string
+	fake := func(ctx context.Context, _, _ string, _ []string, _ string) (string, string, error) {
+		env, _ = ctx.Value(envKey{}).([]string)
+		for _, kv := range env {
+			if v, ok := strings.CutPrefix(kv, "GEMINI_CLI_SYSTEM_SETTINGS_PATH="); ok {
+				path = v
+			}
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("settings file unreadable during the call: %v", err)
+		}
+		if err := json.Unmarshal(b, &settings); err != nil {
+			t.Fatal(err)
+		}
+		return `{"response":"ok"}`, "", nil
+	}
+	p := &cliProvider{kind: ModeGeminiCLI, bin: "gemini", run: fake}
+	if _, err := p.Complete(context.Background(), "q"); err != nil {
+		t.Fatal(err)
+	}
+	if path == "" {
+		t.Fatalf("GEMINI_CLI_SYSTEM_SETTINGS_PATH not set: %v", env)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("the settings file must be removed after the call")
+	}
+	tools := settings["tools"].(map[string]any)
+	excluded := tools["exclude"].([]any)
+	for _, name := range []string{"read_file", "read_many_files", "glob", "search_file_content", "list_directory", "run_shell_command", "web_fetch", "google_web_search", "save_memory", "write_file", "replace"} {
+		if !slices.Contains(excluded, any(name)) {
+			t.Errorf("tool %s not excluded: %v", name, excluded)
+		}
+	}
+	if core := tools["core"].([]any); len(core) != 1 || core[0] != "__cerne_no_tool__" {
+		t.Errorf("tools.core = %v, want the unusable sentinel", core)
+	}
+	if servers := settings["mcpServers"].(map[string]any); len(servers) != 0 {
+		t.Errorf("mcpServers = %v", servers)
+	}
+	if ctxf := settings["context"].(map[string]any)["fileName"].([]any); len(ctxf) != 1 || ctxf[0] != "__cerne_none__.md" {
+		t.Errorf("context.fileName = %v", ctxf)
+	}
+}
+
+// Fail closed: a CLI too old to know an isolation flag is an error naming the
+// update, never a retry with less isolation.
+func TestCLIRejectingAnIsolationFlagFailsClosed(t *testing.T) {
+	for _, kind := range []string{ModeCodexCLI, ModeGeminiCLI} {
+		calls := 0
+		p := &cliProvider{kind: kind, bin: "x", run: func(context.Context, string, string, []string, string) (string, string, error) {
+			calls++
+			return "", "", errors.New(`"x" exited with exit status 2: error: unexpected argument '--ignore-rules' found`)
+		}}
+		_, err := p.Complete(context.Background(), "q")
+		if err == nil || !strings.Contains(err.Error(), "update") || calls != 1 {
+			t.Errorf("%s: err = %v calls = %d, want one call and an update message", kind, err, calls)
+		}
+	}
+}
+
+func TestGeminiEmptyResponseIsAnError(t *testing.T) {
+	p := &cliProvider{kind: ModeGeminiCLI, bin: "gemini", run: func(context.Context, string, string, []string, string) (string, string, error) {
+		return `{"response":"  "}`, "", nil
+	}}
+	if _, err := p.Complete(context.Background(), "q"); !errors.Is(err, ErrGeminiCLI) {
+		t.Fatalf("err = %v, want ErrGeminiCLI for an empty answer", err)
+	}
+}
+
+// F-0414 (M6): codex login is the fix only when the error looks like auth.
+func TestCodexFixHintOnlyForAuthErrors(t *testing.T) {
+	cases := map[string]bool{
+		`"codex" exited with exit status 1: 401 Unauthorized`:             true,
+		`"codex" exited with exit status 1: please sign in`:               true,
+		`"codex" exited with exit status 1: not logged in`:                true,
+		`"codex" exited with exit status 1: model gpt-9 is not supported`: false,
+	}
+	for msg, wantHint := range cases {
+		p := &cliProvider{kind: ModeCodexCLI, bin: "codex", run: func(context.Context, string, string, []string, string) (string, string, error) {
+			return "", "", errors.New(msg)
+		}}
+		_, err := p.Complete(context.Background(), "q")
+		if err == nil || strings.Contains(err.Error(), "codex login") != wantHint {
+			t.Errorf("%q: err = %v, want hint=%v", msg, err, wantHint)
+		}
 	}
 }

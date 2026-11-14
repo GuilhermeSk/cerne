@@ -3,12 +3,17 @@ package llm
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
+	"unicode/utf8"
 )
 
 // ModeClaudeCLI is the provider mode that shells to the Claude Code CLI
@@ -18,6 +23,13 @@ const ModeClaudeCLI = "claude-cli"
 // ErrClaudeCLI wraps any failure of the claude-cli invocation (executable not
 // found, non-zero exit, login missing). Callers detect it with errors.Is.
 var ErrClaudeCLI = errors.New("claude-cli invocation failed")
+
+// ErrCodexCLI and ErrGeminiCLI are ErrClaudeCLI's siblings for the other
+// subscription CLIs (F-0414).
+var (
+	ErrCodexCLI  = errors.New("codex-cli invocation failed")
+	ErrGeminiCLI = errors.New("gemini-cli invocation failed")
+)
 
 // AgentReadTools is the exact tool allowlist the agentic chat provider grants
 // the Claude Code CLI: cerne's READ commands (F-0224 criterion 1) plus the
@@ -99,6 +111,32 @@ type runner func(ctx context.Context, dir, name string, args []string, stdin str
 // is echoed in the error so a verbose CLI does not flood the message.
 const maxOutputBytes = 512
 
+var ansiRE = regexp.MustCompile("\x1b\\[[0-9;?]*[ -/]*[@-~]")
+
+// tail strips ANSI escapes and keeps the LAST n bytes: a CLI prints its banner
+// first and the real error last (Codex), so the head is the useless end.
+func tail(data []byte, n int) string {
+	s := strings.TrimSpace(ansiRE.ReplaceAllString(string(data), ""))
+	if len(s) <= n {
+		return s
+	}
+	s = s[len(s)-n:]
+	for len(s) > 0 && !utf8.RuneStart(s[0]) {
+		s = s[1:]
+	}
+	return "…" + s
+}
+
+// cliFailure wraps a failed CLI call. A call that ended on the context (the
+// deadline passed, or it was canceled) timed out: the login hint would send the
+// user to the wrong fix, so only a real failure keeps it.
+func cliFailure(ctx context.Context, start time.Time, sentinel error, what string, err error, hint string) error {
+	if ctx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: %s timed out after %d seconds", sentinel, what, int(time.Since(start).Round(time.Second)/time.Second))
+	}
+	return fmt.Errorf("%w: failed to call %s: %w — %s", sentinel, what, err, hint)
+}
+
 // describeExit builds the description of a non-zero exit: it prefers stderr
 // (the convention), falls back to stdout — labeled, so the reader knows which
 // pipe it came from — when stderr is empty, and says so explicitly when
@@ -107,10 +145,10 @@ const maxOutputBytes = 512
 // ended in a dangling colon and hid the one line naming the cause.
 func describeExit(name, state string, stdout, stderr []byte) string {
 	if len(bytes.TrimSpace(stderr)) > 0 {
-		return fmt.Sprintf("%q exited with %s: %s", name, state, truncate(stderr, maxOutputBytes))
+		return fmt.Sprintf("%q exited with %s: %s", name, state, tail(stderr, maxOutputBytes))
 	}
 	if len(bytes.TrimSpace(stdout)) > 0 {
-		return fmt.Sprintf("%q exited with %s (stdout): %s", name, state, truncate(stdout, maxOutputBytes))
+		return fmt.Sprintf("%q exited with %s (stdout): %s", name, state, tail(stdout, maxOutputBytes))
 	}
 	return fmt.Sprintf("%q exited with %s (no output)", name, state)
 }
@@ -121,7 +159,11 @@ func describeExit(name, state string, stdout, stderr []byte) string {
 // own explanation via describeExit; an exec error (e.g. executable not found)
 // is reported with an actionable message naming the binary.
 func execRun(ctx context.Context, dir, name string, args []string, stdin string) (string, string, error) {
-	return execRunEnv(ctx, dir, name, args, stdin, nil)
+	var env []string
+	if extra, _ := ctx.Value(envKey{}).([]string); len(extra) > 0 {
+		env = append(os.Environ(), extra...)
+	}
+	return execRunEnv(ctx, dir, name, args, stdin, env)
 }
 
 // agentRun is the runner of the agentic provider (F-0260): same exec, plus the
@@ -154,7 +196,20 @@ func execRunEnv(ctx context.Context, dir, name string, args []string, stdin stri
 		return "", "", errors.New(describeExit(name, exitErr.ProcessState.String(), stdout.Bytes(), stderr.Bytes()))
 	}
 	// Non-exit error: the binary could not be started (not in PATH, etc.).
-	return "", "", fmt.Errorf("could not run %q (install Claude Code and ensure it is on PATH): %w", name, err)
+	return "", "", fmt.Errorf("could not run %q (install %s and ensure it is on PATH): %w", name, cliProduct(name), err)
+}
+
+// cliProduct names the product behind a subscription CLI binary, for the
+// "install X" hint; anything unrecognized is Claude Code (the original).
+func cliProduct(bin string) string {
+	b := strings.ToLower(filepath.Base(bin))
+	switch {
+	case strings.Contains(b, "codex"):
+		return "Codex CLI"
+	case strings.Contains(b, "gemini"):
+		return "Gemini CLI"
+	}
+	return "Claude Code"
 }
 
 // cliProvider is a Provider that performs one completion per call by shelling to
@@ -165,6 +220,8 @@ func execRunEnv(ctx context.Context, dir, name string, args []string, stdin stri
 // answering; nil agentTools is the original one-shot text generator, byte-for-
 // byte, used by ask/compile/diagram.
 type cliProvider struct {
+	kind        string // ModeClaudeCLI (also ""), ModeCodexCLI or ModeGeminiCLI
+	model       string // -m for codex/gemini; never forced on claude
 	bin         string
 	run         runner
 	dir         string   // working directory for the CLI (project root in agentic mode)
@@ -200,6 +257,13 @@ var oneShotIsolation = []string{"--safe-mode", "--tools", ""}
 // isUnknownFlag reports whether err looks like the CLI rejecting a flag it
 // does not know — an old Claude Code without --allowedTools. Covers the
 // cobra ("unknown flag") and commander ("unknown option") phrasings.
+// rejectedFlag reads the argument errors of the Codex and Gemini CLIs (clap and
+// yargs word them differently from Claude Code's).
+func rejectedFlag(err error) bool {
+	msg := err.Error()
+	return isUnknownFlag(err) || strings.Contains(msg, "unexpected argument") || strings.Contains(msg, "unrecognized") || strings.Contains(msg, "Unknown argument")
+}
+
 func isUnknownFlag(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "unknown flag") || strings.Contains(msg, "unknown option")
@@ -222,6 +286,12 @@ func isUnknownFlag(err error) bool {
 // headless permission denials surface — is echoed to the server log, so an
 // attempt outside the allowlist is visible (criterion 4).
 func (p *cliProvider) Complete(ctx context.Context, prompt string) (string, error) {
+	switch p.kind {
+	case ModeCodexCLI:
+		return p.completeCodex(ctx, prompt)
+	case ModeGeminiCLI:
+		return p.completeGemini(ctx, prompt)
+	}
 	base := []string{"-p", "--output-format", "text"}
 	args := base
 	agentic := len(p.agentTools) > 0
@@ -233,15 +303,155 @@ func (p *cliProvider) Complete(ctx context.Context, prompt string) (string, erro
 	} else {
 		args = append(args, oneShotIsolation...)
 	}
+	start := time.Now()
 	out, stderr, err := p.run(ctx, p.dir, p.bin, args, prompt)
 	if err != nil && isUnknownFlag(err) {
 		out, stderr, err = p.run(ctx, p.dir, p.bin, base, prompt)
 	}
 	if err != nil {
-		return "", fmt.Errorf("%w: failed to call Claude Code (claude -p): %w — check 'claude /login' (subscription) or use [llm] mode=\"byo-key\"", ErrClaudeCLI, err)
+		return "", cliFailure(ctx, start, ErrClaudeCLI, "Claude Code (claude -p)", err, "check 'claude /login' (subscription) or use [llm] mode=\"byo-key\"")
 	}
 	if s := strings.TrimSpace(stderr); agentic && s != "" {
 		log.Printf("claude-cli stderr: %s", truncate([]byte(s), maxOutputBytes))
 	}
 	return strings.TrimSpace(out), nil
 }
+
+// scratchDir is the empty directory the Codex and Gemini one-shots run in, so
+// the CLI inherits nothing from the project (no AGENTS.md, no GEMINI.md).
+func scratchDir() (string, func(), error) {
+	dir, err := os.MkdirTemp("", "cerne-cli-")
+	if err != nil {
+		return "", nil, err
+	}
+	return dir, func() { os.RemoveAll(dir) }, nil
+}
+
+// completeCodex runs `codex exec` (R-0093): prompt on stdin ("-"), the final
+// message written by the CLI to the -o file, read-only sandbox, no session
+// persisted, in an empty scratch dir.
+func (p *cliProvider) completeCodex(ctx context.Context, prompt string) (string, error) {
+	dir, cleanup, err := scratchDir()
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrCodexCLI, err)
+	}
+	defer cleanup()
+	outFile := filepath.Join(dir, "answer.txt")
+	// Isolation (F-0414, R-0096): the CLI gets no shell, no connectors, no hosted
+	// search, no user config or rules, and no AGENTS.md — an indexed document
+	// that tries to steer it has nothing to act with.
+	args := []string{"exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
+		"--ignore-user-config", "--ignore-rules", "--disable", "shell_tool", "--disable", "apps",
+		"-c", `web_search="disabled"`, "-c", "project_doc_max_bytes=0", "-o", outFile}
+	if p.model != "" {
+		args = append(args, "-m", p.model)
+	}
+	args = append(args, "-")
+	start := time.Now()
+	if _, _, err := p.run(ctx, dir, p.bin, args, prompt); err != nil {
+		if rejectedFlag(err) {
+			return "", fmt.Errorf("%w: this Codex CLI does not know an isolation flag cerne needs — update it (npm i -g @openai/codex); cerne will not run it with less isolation: %w", ErrCodexCLI, err)
+		}
+		hint := "use another mode"
+		switch {
+		case strings.Contains(err.Error(), "install Codex CLI"):
+			hint = "install Codex CLI and ensure it is on PATH"
+		case authErrorRE.MatchString(err.Error()):
+			hint = "run 'codex login' (subscription) or use another mode"
+		}
+		return "", cliFailure(ctx, start, ErrCodexCLI, "Codex CLI (codex exec)", err, hint)
+	}
+	b, err := os.ReadFile(outFile)
+	if err != nil || len(bytes.TrimSpace(b)) == 0 {
+		return "", fmt.Errorf("%w: codex exec returned no answer — run 'codex login' or check the Codex CLI version", ErrCodexCLI)
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// authErrorRE recognizes a CLI error that a login fixes.
+var authErrorRE = regexp.MustCompile(`(?i)401|unauthori|log(ged)? ?in|sign(ed)? ?in|not authenticated|auth`)
+
+var exitStatusRE = regexp.MustCompile(`exit status (\d+)`)
+
+// geminiReply is the part of `gemini --output-format json` cerne reads.
+type geminiReply struct {
+	Response string `json:"response"`
+	Error    *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// completeGemini runs `gemini` headless (R-0094): prompt on stdin, JSON
+// output, plan approval mode (read-only), in an empty scratch dir. Exit 42 is
+// invalid input; any other failure is read as an API/login problem.
+func (p *cliProvider) completeGemini(ctx context.Context, prompt string) (string, error) {
+	dir, cleanup, err := scratchDir()
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrGeminiCLI, err)
+	}
+	defer cleanup()
+	// Isolation (F-0414, R-0094): the system settings file overrides every other
+	// one, and leaves the CLI no tool, no MCP server and no context file; -e none
+	// turns the extensions off.
+	settings := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(settings, []byte(geminiLockedSettings()), 0o600); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrGeminiCLI, err)
+	}
+	ctx = context.WithValue(ctx, envKey{}, []string{"GEMINI_CLI_SYSTEM_SETTINGS_PATH=" + settings})
+	args := []string{"--output-format", "json", "--approval-mode", "plan", "-e", "none"}
+	if p.model != "" {
+		args = append(args, "-m", p.model)
+	}
+	start := time.Now()
+	out, _, err := p.run(ctx, dir, p.bin, args, prompt)
+	if err != nil {
+		if rejectedFlag(err) {
+			return "", fmt.Errorf("%w: this Gemini CLI does not know an isolation flag cerne needs — update it (npm i -g @google/gemini-cli); cerne will not run it with less isolation: %w", ErrGeminiCLI, err)
+		}
+		hint := "run gemini and sign in (or set GEMINI_API_KEY), then retry"
+		if strings.Contains(err.Error(), "install Gemini CLI") {
+			hint = "install Gemini CLI and ensure it is on PATH"
+		} else if m := exitStatusRE.FindStringSubmatch(err.Error()); m != nil && m[1] == "42" {
+			hint = "invalid input: the prompt or the model name was rejected"
+		}
+		return "", cliFailure(ctx, start, ErrGeminiCLI, "Gemini CLI", err, hint)
+	}
+	var r geminiReply
+	raw := strings.TrimSpace(out)
+	if i, j := strings.Index(raw, "{"), strings.LastIndex(raw, "}"); i >= 0 && j > i {
+		raw = raw[i : j+1] // tolerate warnings printed around the JSON
+	}
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		return "", fmt.Errorf("%w: unreadable gemini output (expected JSON with a response field)", ErrGeminiCLI)
+	}
+	if r.Error != nil && r.Error.Message != "" {
+		return "", fmt.Errorf("%w: %s", ErrGeminiCLI, r.Error.Message)
+	}
+	answer := strings.TrimSpace(r.Response)
+	if answer == "" {
+		return "", fmt.Errorf("%w: gemini returned no answer — check the Gemini CLI version and that it is signed in", ErrGeminiCLI)
+	}
+	return answer, nil
+}
+
+// geminiBuiltinTools are the built-in tool names the locked settings exclude.
+var geminiBuiltinTools = []string{"read_file", "read_many_files", "glob", "search_file_content", "list_directory",
+	"run_shell_command", "web_fetch", "google_web_search", "save_memory", "write_file", "replace"}
+
+// geminiLockedSettings is the system settings.json of a one-shot call. The
+// core allowlist holds only a name no tool has; exclude names every built-in
+// as well, so a name this list misses in a newer CLI is still not allowed.
+func geminiLockedSettings() string {
+	b, _ := json.Marshal(map[string]any{
+		"mcpServers": map[string]any{},
+		"mcp":        map[string]any{"allowed": []string{"__cerne_none__"}},
+		"tools":      map[string]any{"core": []string{"__cerne_no_tool__"}, "exclude": geminiBuiltinTools},
+		"context":    map[string]any{"fileName": []string{"__cerne_none__.md"}},
+	})
+	return string(b)
+}
+
+// envKey carries extra child environment (KEY=VALUE) from a provider to the
+// runner through the context, so the runner signature stays what every fake
+// in the tests already implements.
+type envKey struct{}

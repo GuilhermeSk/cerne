@@ -45,3 +45,6 @@ A result's learnings are history and do not reach the next agent by themselves. 
 
 ## Q: What can cerne do? Which features exist?
 Run `cerne guide` with no question: it prints the catalog of every command, grouped by area, straight from the command tree, so it is never stale. Then `cerne guide "<feature>"` (for example `cerne guide "gauntlet"` or `cerne guide "room"`) returns how to use it: the reference file of that area and the command help. `cerne guide --topics` lists the topics; a command name alone (`cerne guide "room"`) brings its help. The skill's `reference/` folder holds the same detail for agents that read files.
+
+## Q: A human asked me to register this demand. How do I record who asked? What is the origin of a card?
+Every new feature, epic or task stores `origin`: `agent` when your session runs with `CERNE_ACTOR=agent`, `human` otherwise. When the human asked and you only ran the command, pass their words: `cerne feature new "<title>" --context "..." --on-behalf "<quote of the human's request>"` (also on `cerne epic new` and `cerne task new`). That records origin `human` and the quote on the creation event; a blank quote is refused. Read it with `cerne show <id>` and filter with `cerne feature list --origin human|agent`. Cards created before the field have no origin.

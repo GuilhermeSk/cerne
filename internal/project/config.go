@@ -349,6 +349,12 @@ type LLMConfig struct {
 	// OpenAI-compatible gateway or model that ignores or rejects tools): the
 	// chat then has no execution channel and degrades honestly (F-0323 C7).
 	NoFunctionCalling bool `toml:"no_function_calling,omitempty"`
+	// TestKey is a key typed in the UI and used for one connection test, in
+	// memory only: never read from or written to a file (F-0414).
+	TestKey string `toml:"-"`
+	// inherited marks a [llm] filled from the host settings: a read-time view
+	// that SaveConfig never writes into the versioned .cernerc.
+	inherited bool
 }
 
 // LLM defaults applied by withDefaults when a byo-key field is empty/zero.
@@ -372,8 +378,24 @@ func defaultModel() string {
 	return cat.DefaultModel
 }
 
-// llmProviderOpenAI is the OpenAI-compatible byo-key provider (F-0323).
-const llmProviderOpenAI = "openai"
+// Byo-key provider names with a preset (F-0414).
+const (
+	llmProviderAnthropic  = "anthropic"
+	llmProviderOpenAI     = "openai"
+	llmProviderGemini     = "gemini"
+	llmProviderOpenRouter = "openrouter"
+	llmProviderCompatible = "compatible"
+)
+
+// providerPresets are the per-provider base URL and key variable defaults. A
+// provider absent here (anthropic, the empty default) uses the Anthropic ones;
+// "compatible" has no URL on purpose — the user's endpoint is required.
+var providerPresets = map[string]struct{ baseURL, keyEnv string }{
+	llmProviderOpenAI:     {"https://api.openai.com", defaultLLMKeyEnv},
+	llmProviderGemini:     {"https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY"},
+	llmProviderOpenRouter: {"https://openrouter.ai/api", "OPENROUTER_API_KEY"},
+	llmProviderCompatible: {"", defaultLLMKeyEnv},
+}
 
 // WithDefaults returns a copy with each empty/zero byo-key field filled by its
 // default. Mode is left untouched (llm.ResolveMode owns that fallback). It is
@@ -382,18 +404,20 @@ func (c LLMConfig) WithDefaults() LLMConfig {
 	if c.Provider == "" {
 		c.Provider = defaultLLMProvider
 	}
-	// F-0323: the openai provider gets no Anthropic default model (it would
-	// never exist there) and its own base URL.
-	if c.Model == "" && c.Provider != llmProviderOpenAI {
+	preset, ok := providerPresets[c.Provider]
+	if !ok {
+		preset.baseURL, preset.keyEnv = defaultLLMBaseURL, defaultLLMKeyEnv
+	}
+	// Only the anthropic provider gets the catalog's default model (F-0311):
+	// it would never exist on another vendor's endpoint.
+	if c.Model == "" && c.Provider == defaultLLMProvider {
 		c.Model = defaultModel()
 	}
 	if c.KeyEnv == "" {
-		c.KeyEnv = defaultLLMKeyEnv
+		c.KeyEnv = preset.keyEnv
 	}
-	if c.BaseURL == "" && c.Provider == llmProviderOpenAI {
-		c.BaseURL = "https://api.openai.com"
-	} else if c.BaseURL == "" {
-		c.BaseURL = defaultLLMBaseURL
+	if c.BaseURL == "" {
+		c.BaseURL = preset.baseURL
 	}
 	if c.MaxTokens == 0 {
 		c.MaxTokens = defaultLLMMaxTokens
@@ -409,6 +433,9 @@ func (c LLMConfig) WithDefaults() LLMConfig {
 // would collide with when adding their own [llm] config. It writes a whole
 // file; edit an existing one via SetSetting/SetLLMMode.
 func SaveConfig(dir string, c Config) error {
+	if c.LLM.inherited {
+		c.LLM = LLMConfig{}
+	}
 	type wire struct {
 		ProjectID                string              `toml:"project_id"`
 		Backend                  string              `toml:"backend"`
@@ -533,7 +560,35 @@ func readConfig(dir string) (Config, string, error) {
 	if err := c.Delivery.validate(); err != nil {
 		return Config{}, "", fmt.Errorf("%s: %w", path, err)
 	}
+	fillLLMFromHost(&c.LLM)
 	return c, dir, nil
+}
+
+// fillLLMFromHost completes each empty [llm] field of a project from the host
+// settings.toml [llm] (F-0414): the AI agent chosen once for the machine reaches
+// every caller of LoadConfig, and a project value always wins. A host value
+// that is unreadable or invalid for its key is skipped (fail open).
+func fillLLMFromHost(l *LLMConfig) {
+	path, err := settingsFile("", ScopeHost)
+	if err != nil {
+		return
+	}
+	layer, err := readTOMLFile(path)
+	if err != nil {
+		return
+	}
+	tbl, _ := layer["llm"].(map[string]any)
+	// The host [llm] is a tuple (F-0414): a project that chose a mode or a
+	// provider stands alone, so a host endpoint never meets its credentials.
+	if l.Mode != "" || l.Provider != "" {
+		return
+	}
+	for field, dst := range map[string]*string{"mode": &l.Mode, "provider": &l.Provider, "model": &l.Model, "base_url": &l.BaseURL} {
+		if v, ok := tbl[field]; ok && *dst == "" && hasSettingType(declared("llm."+field), v) {
+			*dst = v.(string)
+			l.inherited = true
+		}
+	}
 }
 
 // noProjectAtError is ErrNoProject for an explicit directory (F-0354); its text

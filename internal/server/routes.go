@@ -165,11 +165,22 @@ func dataRoutes() []dataRoute {
 		{"POST", "/chat/title", false, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {
 			handleChatTitle(w, r, projDir)
 		}},
-		{"GET", "/config/llm", true, func(w http.ResponseWriter, _ *http.Request, _, projDir, _ string) {
-			handleLLMConfigGet(w, projDir)
+		{"GET", "/config/llm", true, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {
+			handleLLMConfigGet(w, r, projDir)
 		}},
 		{"PUT", "/config/llm", true, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {
 			handleLLMConfigPut(w, r, projDir)
+		}},
+		// F-0414: the connection test spends the host's LLM and the key routes
+		// write a host secret — local ui only, never the remote serve.
+		{"POST", "/config/llm/test", false, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {
+			handleLLMTest(w, r, projDir)
+		}},
+		{"PUT", "/config/llm/key", false, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {
+			handleLLMKey(w, r, projDir)
+		}},
+		{"DELETE", "/config/llm/key", false, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {
+			handleLLMKey(w, r, projDir)
 		}},
 		// Global, per-user state: the local ui only, never the remote serve.
 		{"PUT", "/config/models/provider", false, func(w http.ResponseWriter, r *http.Request, _, projDir, _ string) {

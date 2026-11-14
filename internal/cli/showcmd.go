@@ -639,6 +639,9 @@ func (r showResult) renderText(w io.Writer) {
 		if e.FromIdea != "" {
 			fmt.Fprintf(w, "from idea: %s\n", e.FromIdea)
 		}
+		if e.Origin != "" {
+			fmt.Fprintf(w, "origin: %s\n", e.Origin)
+		}
 		if r.approvalStale != nil && *r.approvalStale {
 			fmt.Fprintln(w, approvalStaleLine(e.ID))
 		}

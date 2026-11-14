@@ -2502,27 +2502,20 @@ h2 {
   margin-top: 1rem;
 }
 
-.ask-mode {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+.ask-ai {
   margin: 0.5rem 0 0.25rem;
   font-size: 0.9rem;
 }
 
-.ask-mode-label { color: var(--muted); }
+.ask-ai-label { color: var(--muted); }
 
-.ask-mode select {
-  font: inherit;
-  font-size: 0.9rem;
-  padding: 0.25rem 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-}
-
-.ask-mode-hint { color: var(--faint); font-size: 0.82rem; }
+.ask-intro { max-width: 70ch; color: var(--muted); }
+.ask-failure { margin: 1rem 0; max-width: 70ch; }
+.ask-failure a { display: inline-block; margin-top: 0.4rem; }
+.ask-intro a,
+.ask-ai a,
+.ask-notice a { color: var(--link); }
+.ask-ai a:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
 /* referências externas (case 0020) */
 .badge-external {
@@ -3506,3 +3499,65 @@ button.clarify-chip { cursor: pointer; font: inherit; }
   .settings-groups { display: none; }
   .settings-groups-select { display: block; margin-top: 1rem; }
 }
+
+/* AI settings panel (F-0414): the same ledger rules as the Settings rows — a
+   1px rule between access paths, no fill, no side-tab; only the open path
+   shows its controls. */
+.ai-panel { margin-top: 0.5rem; }
+.ai-head:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.ai-headline { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.4; color: var(--fg); }
+.ai-inuse-label { color: var(--muted); font-weight: 400; }
+.ai-headline strong { font-weight: 600; }
+.ai-origin { margin: 0.1rem 0 0; font-size: 0.85rem; color: var(--muted); }
+.ai-override { max-width: 70ch; margin: 0.6rem 0 0; font-size: 0.9rem; color: var(--fg); }
+.ai-auto { margin-top: 0.4rem; }
+.ai-terminal { margin-top: 0.75rem; }
+.ai-terminal code { font-size: 0.78rem; user-select: all; }
+.ai-origin { color: var(--muted); font-size: 0.85rem; }
+.ai-paths { margin-top: 0.75rem; border-top: 1px solid var(--border); }
+.ai-path { padding: 0.8rem 0; border-bottom: 1px solid var(--border-soft); }
+.ai-path-head { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer; }
+.ai-path-head input { margin: 0; accent-color: var(--fg); }
+.ai-path-head input:focus-visible,
+.ai-panel button:focus-visible,
+.ai-panel summary:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.ai-path > .settings-hint { margin: 0.2rem 0 0 1.5rem; max-width: 70ch; }
+.ai-clis { list-style: none; margin: 0.6rem 0 0 1.5rem; padding: 0; }
+.ai-clis li { display: grid; gap: 0.3rem; padding: 0.8rem 0; border-top: 1px solid var(--border-soft); }
+.ai-clis li:first-child { border-top: none; padding-top: 0.2rem; }
+.ai-cli-hint { margin: 0; }
+.ai-cli-name { min-width: 8rem; }
+.ai-fields { display: grid; gap: 0.6rem; margin: 0.7rem 0 0 1.5rem; max-width: 26rem; }
+.ai-fields label { display: grid; gap: 0.2rem; font-size: 0.9rem; }
+.ai-key { display: flex; flex-wrap: wrap; align-items: end; gap: 0.4rem 0.5rem; }
+.ai-key label { flex: 1 1 14rem; }
+.ai-key p { flex-basis: 100%; margin: 0; }
+.ai-keystate { font-size: 0.85rem; color: var(--muted); }
+.ai-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.ai-panel button[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+.ai-notice { min-height: 1.4em; margin: 0.75rem 0 0; font-size: 0.9rem; }
+
+/* Actions (F-0414): "Use" is the full-ink button of the Settings rows; Test,
+   Save key and Remove are the outline one. No browser-default buttons. */
+.ai-use,
+.ai-outline,
+.ai-panel .load-notice button { font: inherit; font-size: 0.85rem; min-height: 1.75rem; padding: 0.3rem 0.8rem; border-radius: 6px; cursor: pointer; }
+.ai-use { border: 1px solid var(--fg); background: var(--fg); color: var(--bg); }
+.ai-outline,
+.ai-panel .load-notice button { border: 1px solid var(--border-field); background: transparent; color: var(--fg); }
+.ai-pill { color: var(--fg); border-color: var(--fg); background: transparent; }
+.ai-notinuse { margin: 0.4rem 0 0 1.5rem; font-size: 0.9rem; color: var(--muted); }
+.ai-cli-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.ai-install { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
+.ai-install .harness-fix,
+.ai-result .harness-fix { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0.4rem; margin: 0; max-width: 28rem; }
+.ai-install .harness-fix pre,
+.ai-result .harness-fix pre { flex: 1; min-width: 0; padding-right: 0.6rem; overflow-x: auto; }
+.ai-install .code-copy,
+.ai-result .code-copy { position: static; flex: none; }
+.ai-result { margin-top: 0.3rem; font-size: 0.9rem; }
+.ai-result p { margin: 0 0 0.3rem; }
+.ai-result details { font-size: 0.85rem; color: var(--muted); }
+.ai-result summary { cursor: pointer; }
+.ai-raw { margin: 0.3rem 0 0; max-width: 100%; overflow-x: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; }
+.settings-text { box-sizing: border-box; }

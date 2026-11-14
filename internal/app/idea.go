@@ -217,6 +217,7 @@ func PromoteIdea(repoDir, projDir, id, title, module string, force bool) (store.
 			return "", err
 		}
 		n.fromIdea = i.ID
+		n.origin, _, _ = resolveOrigin("") // a blank quote is the only error
 		n.light = !projectGates(projDir).GauntletEnabled()
 		if f, _, err = n.mint(repoDir); err != nil {
 			return "", err
