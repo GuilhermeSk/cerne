@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 
@@ -101,9 +100,12 @@ func NewProvider(cfg project.LLMConfig) (Provider, error) {
 	if cfg.BaseURL == "" {
 		return nil, errBaseURLRequired
 	}
-	key := os.Getenv(cfg.KeyEnv)
+	key, _, err := project.ResolveAPIKey(cfg.KeyEnv)
+	if err != nil {
+		return nil, err
+	}
 	if key == "" && cfg.Provider != providerCompatible {
-		return nil, fmt.Errorf("%w: set the %s environment variable", ErrAPIKeyMissing, cfg.KeyEnv)
+		return nil, fmt.Errorf("%w: set the %s environment variable or save the key in Settings", ErrAPIKeyMissing, cfg.KeyEnv)
 	}
 	if cfg.Provider != providerAnthropic {
 		return &openaiProvider{baseURL: cfg.BaseURL, model: cfg.Model, apiKey: key, httpClient: http.DefaultClient}, nil
@@ -277,9 +279,12 @@ func ListModels(ctx context.Context, cfg project.LLMConfig) ([]models.Entry, err
 	if cfg.Provider != providerAnthropic {
 		return nil, fmt.Errorf("%w (provider %q)", ErrNoListing, cfg.Provider)
 	}
-	key := os.Getenv(cfg.KeyEnv)
+	key, _, err := project.ResolveAPIKey(cfg.KeyEnv)
+	if err != nil {
+		return nil, err
+	}
 	if key == "" {
-		return nil, fmt.Errorf("%w: set the %s environment variable", ErrAPIKeyMissing, cfg.KeyEnv)
+		return nil, fmt.Errorf("%w: set the %s environment variable or save the key in Settings", ErrAPIKeyMissing, cfg.KeyEnv)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.BaseURL+"/v1/models?limit=1000", nil)
 	if err != nil {

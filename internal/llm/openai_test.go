@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/henriquesakata/cerne/internal/project"
@@ -205,5 +206,43 @@ func TestCompatibleNeedsABaseURLButNoKey(t *testing.T) {
 	}
 	if _, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "nope", Model: "m"}); err == nil {
 		t.Fatal("unknown provider must error")
+	}
+}
+
+func TestProviderKeyFromHostFile(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	t.Setenv("CERNE_CONFIG_DIR", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "")
+	if err := project.WriteCredential("OPENROUTER_API_KEY", "file-key"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := project.LLMConfig{Mode: "byo-key", Provider: "openrouter", Model: "m", BaseURL: srv.URL}
+	prov, err := NewProvider(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prov.Complete(context.Background(), "q")
+	if gotAuth != "Bearer file-key" {
+		t.Fatalf("auth = %q, want the file key", gotAuth)
+	}
+	t.Setenv("OPENROUTER_API_KEY", "env-key")
+	prov, _ = NewProvider(cfg)
+	prov.Complete(context.Background(), "q")
+	if gotAuth != "Bearer env-key" {
+		t.Fatalf("auth = %q, want the env var to win", gotAuth)
+	}
+}
+
+func TestMissingKeyErrorNamesVariableNotValue(t *testing.T) {
+	t.Setenv("CERNE_CONFIG_DIR", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "")
+	_, err := NewProvider(project.LLMConfig{Mode: "byo-key", Provider: "openrouter", Model: "m"})
+	if !errors.Is(err, ErrAPIKeyMissing) || !strings.Contains(err.Error(), "OPENROUTER_API_KEY") {
+		t.Fatalf("err = %v", err)
 	}
 }
