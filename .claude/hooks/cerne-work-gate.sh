@@ -14,7 +14,7 @@
 [ -n "${CERNE_NO_AGENT_HOOKS:-}" ] && exit 0
 # A GUI host (Cursor, an IDE opened from the Dock) can run hooks with the
 # bare system PATH; look where cerne installs to as well (F-0428).
-command -v cerne >/dev/null 2>&1 || PATH="$PATH:$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin"
+command -v cerne >/dev/null 2>&1 || PATH="${PATH:+$PATH:}$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin"
 
 command -v cerne >/dev/null 2>&1 || exit 0
 cerne hook work-gate 2>/dev/null || true
