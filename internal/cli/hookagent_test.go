@@ -94,6 +94,71 @@ func TestHookWorkGateSubagentFallback(t *testing.T) {
 	}
 }
 
+// TestHookBindWorkSubagentStartWithTruncatedOutput (B-0002) — the case of
+// T-0005 on 2026-11-14: a dev subagent ran `cerne feature start T-0005 2>&1 |
+// tail -5`; tail cut the "T-0005: approved → in_development" line, the hook
+// bound nothing, and both complete's stamp and `cost --stamp` found no session
+// until a manual `cost attribute`. The start did happen (the clone holds the
+// feature in_development): the subagent's own key binds, the main thread's
+// binding stays its own, and the cost stamps with no attribute.
+func TestHookBindWorkSubagentStartWithTruncatedOutput(t *testing.T) {
+	t.Setenv("CLAUDECODE", "1")
+	projDir, _, repoDir := setupProject(t)
+	cacheDir := filepath.Dir(repoDir)
+	seedResultFeatures(t, repoDir, domain.StateInDevelopment, domain.StateInDevelopment) // F-0001 the dev's, F-0002 the TL's
+	if err := app.BindSession(cacheDir, "sess-tl", "F-0002"); err != nil {
+		t.Fatal(err)
+	}
+	start := withAgent(hookJSON(t, "sess-tl", projDir, "Bash",
+		map[string]any{"command": "cd " + projDir + " && cerne feature start F-0001 2>&1 | tail -5"},
+		map[string]any{"stdout": "Next step:\n  - before the code: consult the active notes\n  - keep progress real-time\n  - when done: fill in the result\ncerne: wrote to project \"p\""}), "x")
+	if out, err := execCerneStdin(t, start, "hook", "bind-work"); err != nil {
+		t.Fatalf("hook bind-work: %v\n%s", err, out)
+	}
+	if id, ok, err := app.CurrentBinding(cacheDir, repoDir, "sess-tl", "x"); err != nil || !ok || id != "F-0001" {
+		t.Fatalf("subagent binding = (%q, %v, %v), want F-0001", id, ok, err)
+	}
+	if id, ok, err := app.CurrentBinding(cacheDir, repoDir, "sess-tl", ""); err != nil || !ok || id != "F-0002" {
+		t.Fatalf("main binding = (%q, %v, %v), want the TL's F-0002", id, ok, err)
+	}
+
+	root := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", root)
+	writeTranscript(t, root, "sess-tl/subagents/agent-x.jsonl",
+		costLine(time.Now().UTC().Add(time.Minute).Format(time.RFC3339), "m1", "claude-sonnet-5", "x", 1, 10, 100, 1000))
+	out, err := execCerne(t, "feature", "complete", "F-0001", "--dir", projDir)
+	if err != nil || !stampedLine.MatchString(out) {
+		t.Fatalf("complete did not stamp the subagent's cost: %v\n%s", err, out)
+	}
+	if out, err := execCerne(t, "cost", "F-0001", "--stamp", "--dir", projDir); err != nil || !strings.Contains(out, "unchanged") {
+		t.Fatalf("cost --stamp: %v\n%s", err, out)
+	}
+}
+
+// TestHookBindWorkTruncatedStartNeedsARealStart (B-0002): without the
+// transition line, only a command that runs `cerne feature start` on a
+// feature the clone holds in_development binds — a mention (a commit message)
+// or a refused start binds nothing.
+func TestHookBindWorkTruncatedStartNeedsARealStart(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	cacheDir := filepath.Dir(repoDir)
+	seedResultFeatures(t, repoDir, domain.StateInDevelopment, domain.StateApproved) // F-0001 started, F-0002 not
+	for _, command := range []string{
+		`git commit -m "fix: cerne feature start F-0001 2>&1 | tail -5"`,
+		"cerne feature start F-0002 2>&1 | tail -5",
+		"cerne feature start F-0001 --help | tail -5",
+	} {
+		payload := withAgent(hookJSON(t, "sess-tl", projDir, "Bash",
+			map[string]any{"command": command}, map[string]any{"stdout": "Next step:"}), "x")
+		if out, err := execCerneStdin(t, payload, "hook", "bind-work"); err != nil {
+			t.Fatalf("%s: %v\n%s", command, err, out)
+		}
+		if _, err := os.Stat(filepath.Join(cacheDir, "sessions", "sess-tl.x")); !os.IsNotExist(err) {
+			t.Fatalf("%s: bound (%v), want no binding", command, err)
+		}
+	}
+}
+
 // TestHookBindWorkBindsHandoffTake (F-0376 task 1: Claude Code exposes no
 // subagent id to Bash, so the take binds through the hook, like work start):
 // the real `cerne handoff take` output binds the main thread's key from the
