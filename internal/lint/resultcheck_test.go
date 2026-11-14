@@ -202,11 +202,11 @@ func TestResultGauntletReadsErrata(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir, f := writeResultFixture(t, domain.StateImplemented, checkSpec, "critério 1 e critério 2\n\n"+badGauntlet)
-			if got := gauntletFinding(dir, f, false); len(got) != 1 {
+			if got := gauntletFinding(dir, f, nil, false); len(got) != 1 {
 				t.Fatalf("want a finding before errata, got %+v", got)
 			}
 			addErrata(t, dir, entries...)
-			if got := gauntletFinding(dir, f, false); len(got) != 0 {
+			if got := gauntletFinding(dir, f, nil, false); len(got) != 0 {
 				t.Fatalf("want no finding, got %+v", got)
 			}
 		})
@@ -258,7 +258,7 @@ func TestResultGauntletDetailNamesTheResult(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir, f := writeResultFixture(t, domain.StateImplemented, checkSpec, tc.result)
 			addErrata(t, dir, noBar)
-			got := gauntletFinding(dir, f, false)
+			got := gauntletFinding(dir, f, nil, false)
 			if len(got) != 1 || !strings.Contains(got[0].Detail, "result.md has no complete Gauntlet record: "+tc.want) {
 				t.Fatalf("want one finding with detail %q, got %+v", tc.want, got)
 			}
@@ -274,11 +274,11 @@ func TestResultGauntletErrataHeldToStrictReader(t *testing.T) {
 	legacyOnly := "## Gauntlet\n\nRodada 1 — vitória: \"ok\"\n"
 	dir, f := writeResultFixture(t, domain.StateImplemented, checkSpec, "critério 1 e critério 2\n")
 	addErrata(t, dir, legacyOnly)
-	if got := gauntletFinding(dir, f, true); len(got) != 1 {
+	if got := gauntletFinding(dir, f, nil, true); len(got) != 1 {
 		t.Fatalf("legacy-only erratum: want one finding, got %+v", got)
 	}
 	dir, f = writeResultFixture(t, domain.StateImplemented, checkSpec, "critério 1 e critério 2\n\n"+legacyOnly)
-	if got := gauntletFinding(dir, f, true); len(got) != 0 {
+	if got := gauntletFinding(dir, f, nil, true); len(got) != 0 {
 		t.Fatalf("legacy-only result before the cutoff: want no finding, got %+v", got)
 	}
 }
@@ -289,7 +289,7 @@ func TestResultGauntletErrataHeldToStrictReader(t *testing.T) {
 func TestResultGauntletErrataEntriesDoNotJoin(t *testing.T) {
 	dir, f := writeResultFixture(t, domain.StateImplemented, checkSpec, "critério 1 e critério 2\n")
 	addErrata(t, dir, "## Gauntlet\n\nBarra: x\n", "Rodada 1 — vitória: \"ok\" — VEREDITO: A\n")
-	if got := gauntletFinding(dir, f, false); len(got) != 1 {
+	if got := gauntletFinding(dir, f, nil, false); len(got) != 1 {
 		t.Fatalf("want one finding, got %+v", got)
 	}
 }

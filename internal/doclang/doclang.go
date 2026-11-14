@@ -236,6 +236,9 @@ const (
 	NotApplicable
 	Waived
 	WaivedOpen
+	// Inherited is the bar form only a task declares (T-0007): "herdada de
+	// <id do pai>" — the parent's named bar and Gauntlet round cover it.
+	Inherited
 	// MethodLabel and ExitLabel open the two header lines under the bar.
 	MethodLabel
 	ExitLabel
@@ -289,6 +292,7 @@ var terms = map[Term]map[Lang]form{
 	NotApplicable:      {PT: {`n(?:ã|a\x{0303}|a)o[\s-]+aplic(?:á|a\x{0301}|a)vel`, "não aplicável"}, EN: {`not[\s-]+applicable`, "not applicable"}},
 	Waived:             {PT: {`dispensada\s+por\s+decis(?:ã|a\x{0303}|a)o\s+humana`, "dispensada por decisão humana"}, EN: {`waived\s+by\s+human\s+decision`, "waived by human decision"}},
 	WaivedOpen:         {PT: {re: `dispensada`}, EN: {re: `waived\s+by\b`}},
+	Inherited:          {PT: {`herdad[ao]\s+de`, "herdada de"}, EN: {`inherited\s+from`, "inherited from"}},
 	MethodLabel:        {PT: {re: `M(?:é|e\x{0301}|e)todo`}, EN: {re: `Method`}},
 	ExitLabel:          {PT: {re: `Sa(?:í|i\x{0301}|i)da`}, EN: {re: `Exit`}},
 	Round:              {PT: {`Rodada`, "Rodada"}, EN: {`Round`, "Round"}},

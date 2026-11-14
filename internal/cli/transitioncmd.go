@@ -172,6 +172,7 @@ func runTransition(cmd *cobra.Command, dir string, action domain.Action, id, by,
 	fmt.Fprintln(cmd.OutOrStdout(), transitionLine(action, out))
 	printMovedPendings(cmd.OutOrStdout(), out.Pendings)
 	printMovedPendings(cmd.OutOrStdout(), out.Ideas)
+	printMovedPendings(cmd.OutOrStdout(), out.Cascade) // the children it carried (T-0007)
 	// Approving is accepting the proposed bar (F-0308 crit. 9): say which.
 	if out.Bar != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "Accepted bar: %s\n", out.Bar)
@@ -214,6 +215,7 @@ func runTransition(cmd *cobra.Command, dir string, action domain.Action, id, by,
 		printCompleteLearnings(cmd.OutOrStdout(), ctx.repoDir, id)
 	}
 	if action == domain.ActionStart {
+		printTaskAdvice(cmd.OutOrStdout(), ctx, id) // a task has no approve check (T-0007)
 		// The moment-of-action guidance rides stdout, every harness (F-0426).
 		w := cmd.OutOrStdout()
 		fmt.Fprintln(w, "Next step:")
@@ -243,8 +245,14 @@ func printCompleteNextStep(w io.Writer, repoDir, id string, noStamp bool) {
 	if noStamp {
 		fmt.Fprintf(w, "  - record its token cost: cerne cost %s --stamp, before the human accept (F-0309)\n", id)
 	}
-	fmt.Fprintf(w, "  - human accept: cerne feature accept %s (or drag the card to Done)\n", id)
-	if f, err := store.LoadFeature(repoDir, id); err == nil {
+	f, err := store.LoadFeature(repoDir, id)
+	if err == nil && strings.HasPrefix(id, "T-") && f.Parent != "" {
+		// A task rides its parent's accept (T-0007): one human act for all.
+		fmt.Fprintf(w, "  - human accept: %s is accepted along with its parent: cerne feature accept %s\n", id, f.Parent)
+	} else {
+		fmt.Fprintf(w, "  - human accept: cerne feature accept %s (or drag the card to Done)\n", id)
+	}
+	if err == nil {
 		if line := app.DeliveryLine(f, true); line != "" {
 			if f.DeliveryMRURL != "" {
 				line += " — mark it ready for review when CI is green"

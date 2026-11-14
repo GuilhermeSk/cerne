@@ -1243,7 +1243,13 @@ func writeResultStub(repoDir, id, title string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	content := "---\ncerne_id: " + id + "\n---\n\n" + restmpl.StubIn(store.DocsLanguage(repoDir), title)
+	l := store.DocsLanguage(repoDir)
+	content := "---\ncerne_id: " + id + "\n---\n\n" + restmpl.StubIn(l, title)
+	if spec, err := os.ReadFile(FeatureDocPath(repoDir, id, "spec.md")); err == nil && isTask(id) {
+		if bar, err := doccheck.SpecBar(spec); err == nil {
+			content += restmpl.TaskBarNote(l, bar) // the record a task owes follows its spec (T-0007)
+		}
+	}
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
@@ -1268,7 +1274,7 @@ func writeEpicResultStub(repoDir, id, title string, children []store.Feature) er
 	var roster strings.Builder
 	roster.WriteString("<!-- ROSTER DAS FILHAS (matéria-prima para a seção Resultado; apague ao preencher):\n")
 	for _, c := range children {
-		roster.WriteString(fmt.Sprintf("- %s: %s — result: content/features/%s/result.md\n", c.ID, c.Title, c.ID))
+		roster.WriteString(fmt.Sprintf("- %s: %s%s — result: content/features/%s/result.md\n", c.ID, c.Title, childBarOutcome(repoDir, c.ID), c.ID))
 	}
 	roster.WriteString("-->\n\n")
 	content := "---\ncerne_id: " + id + "\n---\n\n" + roster.String() + restmpl.StubIn(store.DocsLanguage(repoDir), title)

@@ -28,6 +28,7 @@ type matchers struct {
 	waived       *regexp.Regexp // the complete form; group 1: the parenthesized text
 	notApplicAt  *regexp.Regexp // a value that opens as that exemption
 	waivedAt     *regexp.Regexp
+	inherited    *regexp.Regexp // the inherited form; group 1: the parent's id, if any
 	header       *regexp.Regexp // the Method/Exit lines under the bar
 	critic       *regexp.Regexp
 	round        *regexp.Regexp // group 1: the round number
@@ -62,6 +63,7 @@ func build(l Lang) matchers {
 		waived:      regexp.MustCompile(`(?i)^` + in(Waived, l) + `\s*\(([^)]*)`),
 		notApplicAt: regexp.MustCompile(`(?i)^` + in(NotApplicable, l)),
 		waivedAt:    regexp.MustCompile(`(?i)^` + in(WaivedOpen, l)),
+		inherited:   regexp.MustCompile(`(?i)^` + in(Inherited, l) + `\b[\s\x60"“*_]*([a-z]-\d+)?`),
 	}
 	rangeCase := `(?i)` // "Criteria 2 TO 4", as the keyword itself is matched
 	if layouts[l] == loose {
@@ -161,6 +163,19 @@ func Exemption(value string) (t Term, l Lang, inner string, complete, ok bool) {
 		}
 	}
 	return 0, "", "", false, false
+}
+
+// Inheritance reads a bar value as the inherited form a task may declare
+// (T-0007): "herdada de <id>" / "inherited from <id>". ok reports that the
+// value opens as the form; id is the parent's id it names, upper-cased, ""
+// when none follows (the bar reader refuses that as malformed).
+func Inheritance(value string) (id string, l Lang, ok bool) {
+	for _, l := range langs {
+		if sub := byLang[l].inherited.FindStringSubmatch(value); sub != nil {
+			return strings.ToUpper(sub[1]), l, true
+		}
+	}
+	return "", "", false
 }
 
 // HeaderLine reports a Method or Exit line: part of the bar's header, never

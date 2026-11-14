@@ -137,6 +137,16 @@ func BodyIn(l doclang.Lang) string {
 	return Body
 }
 
+// TaskBarNote is the line a task's result scaffold ends with (T-0007): the bar
+// its spec declares, which decides the Gauntlet record the result owes. It
+// sits inside a guide comment, so the scaffold still reads as a stub.
+func TaskBarNote(l doclang.Lang, bar string) string {
+	if l == doclang.EN {
+		return "<!-- This task's bar, declared in its spec: a named bar owes a round in this section; not applicable, waived or inherited owes none. " + bar + " -->\n"
+	}
+	return "<!-- Barra desta task, declarada na spec: barra nomeada pede uma rodada nesta seção; não aplicável, dispensada ou herdada não pede rodada. " + bar + " -->\n"
+}
+
 // StubIn is Stub in language l.
 func StubIn(l doclang.Lang, title string) string {
 	return "# " + strings.TrimSpace(title) + "\n\n" + BodyIn(l)

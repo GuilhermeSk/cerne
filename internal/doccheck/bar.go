@@ -79,6 +79,9 @@ func barValueIn(value string, l doclang.Lang) (exempt bool, err error) {
 		}
 		return true, exemptionError(l, inner, complete, `"`+doclang.Display(t, el)+`" `+need)
 	}
+	if id, el, ok := doclang.Inheritance(plain); ok && id == "" {
+		return false, malformed(l, `"%s" needs the parent's id: "%s: %s <id>"`, doclang.Display(doclang.Inherited, el), label, doclang.Display(doclang.Inherited, el))
+	}
 	return false, nil
 }
 
@@ -209,9 +212,13 @@ func blankComments(body string) string {
 // Verificação section of a spec body. With a bar named and no written question
 // there it returns ErrJudgeQuestionMissing — or a *MisplacedJudgeQuestion when
 // the line exists elsewhere. A spec whose bar is "não aplicável", waived, or
-// absent owes none (the bar gate speaks for the last). Guide comments are
+// absent owes none (the bar gate speaks for the last), and so does an
+// inherited one: the parent's spec carries it (T-0007). Guide comments are
 // stripped first, as SpecBar does.
 func SpecJudgeQuestion(body []byte) (string, error) {
+	if _, inherited := BarInherited(body); inherited {
+		return "", nil
+	}
 	if _, err := SpecBar(body); err != nil || BarExempt(body) {
 		return "", nil
 	}
@@ -256,4 +263,24 @@ func BarNotApplicable(body []byte) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(inner), true
+}
+
+// BarInherited returns the parent's id of a spec whose valid bar is the
+// inherited form (T-0007); false for any other bar, or none.
+func BarInherited(body []byte) (string, bool) {
+	bar, err := SpecBar(body)
+	if err != nil {
+		return "", false
+	}
+	_, value, _ := strings.Cut(bar, ":")
+	id, _, ok := doclang.Inheritance(strings.TrimSpace(emphasis.Replace(value)))
+	return id, ok
+}
+
+// BarNamed reports a spec whose valid bar names a reference: neither exempt
+// nor inherited — the bar a Gauntlet round answers to.
+func BarNamed(body []byte) bool {
+	_, inherited := BarInherited(body)
+	_, err := SpecBar(body)
+	return err == nil && !inherited && !BarExempt(body)
 }

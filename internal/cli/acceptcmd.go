@@ -80,6 +80,7 @@ func runFeatureAccept(cmd *cobra.Command, dir string, args []string, reason stri
 	fmt.Fprintf(cmd.OutOrStdout(), "%s: %s → %s\n", out.ID, out.From, out.To)
 	printMovedPendings(cmd.OutOrStdout(), out.Pendings)
 	printMovedPendings(cmd.OutOrStdout(), out.Ideas)
+	printMovedPendings(cmd.OutOrStdout(), out.Cascade) // the tasks it accepted along (T-0007)
 	if cost.Unstamped(filepath.Dir(ctx.repoDir), ctx.repoDir, id) {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s's token cost was never stamped: its harvested cost did not reach the result. Run 'cerne cost <id> --stamp' after 'feature complete', before the accept (F-0309).\n", id)
 	}
@@ -99,6 +100,12 @@ func runFeatureAcceptAllImplemented(cmd *cobra.Command, ctx projCtx, reason stri
 		if f.State != domain.StateImplemented {
 			continue
 		}
+		// A parent accepted earlier in the loop may have taken this task along
+		// (T-0007): read the state again rather than accept it twice.
+		if cur, err := store.LoadFeature(ctx.repoDir, f.ID); err == nil && cur.State == domain.StateDone {
+			accepted++
+			continue
+		}
 		out, err := app.TransitionFeature(ctx.repoDir, ctx.projDir, f.ID, domain.ActionAccept, "", reason, nil)
 		if err != nil {
 			return fmt.Errorf("accepting %s: %w", f.ID, err)
@@ -106,6 +113,7 @@ func runFeatureAcceptAllImplemented(cmd *cobra.Command, ctx projCtx, reason stri
 		fmt.Fprintf(cmd.OutOrStdout(), "%s: %s → %s\n", out.ID, out.From, out.To)
 		printMovedPendings(cmd.OutOrStdout(), out.Pendings)
 		printMovedPendings(cmd.OutOrStdout(), out.Ideas)
+		printMovedPendings(cmd.OutOrStdout(), out.Cascade)
 		accepted++
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "%d feature(s) accepted.\n", accepted)

@@ -194,5 +194,6 @@ func errataText(repoDir string, f store.Feature) []byte {
 // result-missing-gauntlet, in RuleOrder. It reads only the strict Gauntlet
 // reader (no legacy tolerance) — the gate at `complete` (F-0303).
 func CheckResult(repoDir string, f store.Feature) []Finding {
-	return append(evidenceFinding(repoDir, f), gauntletFinding(repoDir, f, false)...)
+	features, _ := store.LoadAllFeatures(repoDir) // unreadable: no inheriting task is seen
+	return append(evidenceFinding(repoDir, f), gauntletFinding(repoDir, f, features, false)...)
 }
