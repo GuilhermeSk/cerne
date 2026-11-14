@@ -15,7 +15,8 @@ step, in the install output. Research provenance: R-0035 (Codex), R-0036
 | Live board at session start | SessionStart hook (project-owned or session-context) | sessionStart hook → additional_context | SessionStart hook → additionalContext | SessionStart hook → additionalContext |
 | Work gate (deny unregistered edits) | PreToolUse deny (cerne-work-gate.sh) | degraded: no documented session key — enable the third-party toggle to reuse the .claude hooks | PreToolUse deny, matcher Edit|Write | BeforeTool deny, matcher write_file|replace |
 | Session→work binding | PostToolUse/Bash (cerne-work-bind.sh) | degraded: depends on the gate route above | PostToolUse, matcher Bash | AfterTool, matcher run_shell_command (--format gemini) |
-| Lifecycle + provenance reminders | PostToolUse/Bash (lifecycle-reminder, provenance) | degraded: via third-party toggle | PostToolUse, matcher Bash | degraded: AfterTool context envelope pending live validation |
+| Lifecycle guidance (feature new/start, idea promote) | CLI output (every harness) | CLI output (every harness) | CLI output (every harness) | CLI output (every harness) |
+| Provenance reminder | PostToolUse/Bash (provenance) | degraded: via third-party toggle | PostToolUse, matcher Bash | degraded: AfterTool context envelope pending live validation |
 | Stop closeout | Stop hook (cerne-stop-closeout.sh) | degraded: stop followup_message auto-submits — deferred | Stop hook | degraded: AfterAgent forces a retry — deferred |
 | Handoff code through compaction | PreCompact hook (cerne-precompact.sh) + SessionStart source=compact | degraded: PreCompact not wired yet | degraded: PreCompact not wired yet | degraded: no compaction hook |
 | CERNE_ACTOR=agent (human gates) | settings.json env block | degraded: no per-project session env surface | shell_environment_policy.set in .codex/config.toml | .gemini/.env |
