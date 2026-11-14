@@ -3,7 +3,6 @@ package app
 import (
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/henriquesakata/cerne/internal/project"
 )
@@ -18,7 +17,7 @@ var ErrHumanGate = errors.New("human gate")
 // Anything else passes — fail-open by design: the gate exists to stop the
 // *configured* agent from approving its own spec, not to authenticate humans.
 func CheckHumanGate(gate string) error {
-	if gate == project.GateHuman && isAgentActor(os.Getenv("CERNE_ACTOR")) {
+	if gate == project.GateHuman && isAgentActor(actorEnv()) {
 		return fmt.Errorf("%w: this transition is a human act in this project — ask a human for the approval/acceptance (or configure [gates] in .cernerc for an explicit bypass)", ErrHumanGate)
 	}
 	return nil
@@ -27,7 +26,7 @@ func CheckHumanGate(gate string) error {
 // CheckHumanSetting refuses an agent actor on a setting only a human writes
 // (F-0392). Fail-open like CheckHumanGate; the UI server does not call it.
 func CheckHumanSetting(id string) error {
-	if project.SettingHumanOnly(id) && isAgentActor(os.Getenv("CERNE_ACTOR")) {
+	if project.SettingHumanOnly(id) && isAgentActor(actorEnv()) {
 		return fmt.Errorf("%w: %s is the project owner's decision — changing it is done in the Settings screen of cerne ui, or by the owner in their own terminal", ErrHumanGate, id)
 	}
 	return nil

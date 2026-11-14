@@ -21,6 +21,7 @@ import (
 // harness; cost tests opt in per-case via t.Setenv.
 func TestMain(m *testing.M) {
 	os.Unsetenv("CERNE_ACTOR")
+	os.Unsetenv("CURSOR_AGENT") // Cursor's agent-shell marker counts as an agent too (F-0428)
 	dir, err := os.MkdirTemp("", "cerne-config-")
 	if err != nil {
 		panic(err)

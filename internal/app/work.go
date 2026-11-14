@@ -317,7 +317,7 @@ var hostname = os.Hostname
 // host is derived at run time, never written to the committed settings.json),
 // any other explicit value is kept as is, and unset yields fallback.
 func resolveActor(fallback string) string {
-	switch a := os.Getenv("CERNE_ACTOR"); a {
+	switch a := actorEnv(); a {
 	case "":
 		return fallback
 	case legacyAgentActor:
@@ -331,6 +331,21 @@ const (
 	legacyAgentActor = "agent"
 	agentActorPrefix = "agent:"
 )
+
+// actorEnv is the actor the environment declares: CERNE_ACTOR, or the legacy
+// "agent" in a Cursor agent shell (F-0428). Cursor does not apply the
+// settings.json env block that stamps CERNE_ACTOR, but puts CURSOR_AGENT=1 on
+// its agent's terminals (seen in Cursor 3.25.6, undocumented — if it goes, the
+// actor is simply the human default again).
+func actorEnv() string {
+	if a := os.Getenv("CERNE_ACTOR"); a != "" {
+		return a
+	}
+	if os.Getenv("CURSOR_AGENT") == "1" {
+		return legacyAgentActor
+	}
+	return ""
+}
 
 // isAgentActor reports an agent identity: the F-0350 form or the legacy bare "agent".
 func isAgentActor(a string) bool {
