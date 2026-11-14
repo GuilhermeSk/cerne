@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { Fragment, useId, useState } from 'react'
 import {
   fetchCostDetail,
   fetchCosts,
@@ -24,7 +24,9 @@ type Filter = Exclude<Key, 'since' | 'until'>
 
 const ROLE_ORDER = ['builder', 'critic', 'judge', 'main', 'other', 'unknown']
 const COUNTERS = ['input', 'cache_creation', 'cache_read', 'output'] as const
-const SEG_COLORS = ['#4e79a7', '#e15759', '#f28e2b', '#76b7b2', '#59a14f', '#9c9c9c', '#b07aa1', '#edc948']
+// Segment colours are theme tokens (app.css, .costs-seg-N); "unknown" is not a
+// role or a model, so it takes the neutral one wherever it falls (F-0424).
+const SEG_COUNT = 7
 
 function parseParams(hash: string): URLSearchParams {
   const raw = new URLSearchParams(hash.split('?')[1] ?? '')
@@ -83,13 +85,15 @@ function CostsBody({ r, params }: { r: CostsReport; params: URLSearchParams }) {
   const w = r.weights
   return (
     <>
-      <p className="muted">
-        {t.costs.weights(
-          COUNTERS.map((k) => `${t.costs.weightNames[k]} ${w[k].toLocaleString(lang)}`).join(' · '),
-        )}
-      </p>
       <Filters r={r} params={params} />
-      <p>{t.costs.coverage(r.coverage.stamped, r.coverage.delivered, r.coverage.epics)}</p>
+      <div className="costs-context">
+        <p>{t.costs.coverage(r.coverage.stamped, r.coverage.delivered, r.coverage.epics)}</p>
+        <p className="costs-weights">
+          {t.costs.weights(
+            COUNTERS.map((k) => `${t.costs.weightNames[k]} ${w[k].toLocaleString(lang)}`).join(' · '),
+          )}
+        </p>
+      </div>
       {r.coverage.stamped === 0 ? (
         <>
           <p className="muted">{t.costs.empty}</p>
@@ -118,25 +122,27 @@ function CostsBody({ r, params }: { r: CostsReport; params: URLSearchParams }) {
               <dd>{r.features.length}</dd>
             </div>
           </dl>
-          <section>
-            <h2>{t.costs.weekly}</h2>
-            <Weekly r={r} onMarker={setMarker} />
-            <Compare weeks={r.weeks} />
-          </section>
-          <section>
-            <h2>{t.costs.composition}</h2>
-            <Stacked
-              entries={ordered(r.roles).map(([role, v]) => [t.costs.roles[role] ?? role, v])}
-              label={t.costs.compositionLabel}
-              listLabel={t.costs.composition}
-            />
-            <p className="muted">
-              {t.costs.rolesCoverage(
-                r.features.filter((f) => f.by_role && Object.keys(f.by_role).length > 0).length,
-                r.features.length,
-              )}
-            </p>
-          </section>
+          <div className="costs-analysis">
+            <section>
+              <h2>{t.costs.weekly}</h2>
+              <Weekly r={r} onMarker={setMarker} />
+              <Compare weeks={r.weeks} />
+            </section>
+            <section className="costs-composition">
+              <h2>{t.costs.composition}</h2>
+              <Stacked
+                entries={ordered(r.roles).map(([role, v]) => [role, t.costs.roles[role] ?? role, v])}
+                label={t.costs.compositionLabel}
+                listLabel={t.costs.composition}
+              />
+              <p className="muted">
+                {t.costs.rolesCoverage(
+                  r.features.filter((f) => f.by_role && Object.keys(f.by_role).length > 0).length,
+                  r.features.length,
+                )}
+              </p>
+            </section>
+          </div>
           <FeatureTable features={r.features} />
         </>
       )}
@@ -196,36 +202,38 @@ function Filters({ r, params }: { r: CostsReport; params: URLSearchParams }) {
   return (
     <fieldset className="costs-filters">
       <legend>{t.costs.filters}</legend>
-      {(['since', 'until'] as const).map((k) => (
-        <div key={k}>
-          <label htmlFor={`${id}-${k}`}>{t.costs[k]}</label>
-          <input
-            id={`${id}-${k}`}
-            type="date"
-            value={params.get(k) ?? r[k]}
-            onChange={(e) => setParam(params, k, e.target.value)}
-          />
-        </div>
-      ))}
-      {filters.map(({ key, options, covered }) => {
-        const value = params.get(key) ?? ''
-        // A value from the hash the period does not hold still shows, with n 0.
-        const shown = value && !options.some((o) => o.value === value) ? [...options, { value, n: 0 }] : options
-        return (
-          <div key={key}>
-            <label htmlFor={`${id}-${key}`}>{t.costs.filterNames[key]}</label>
-            <select id={`${id}-${key}`} value={value} onChange={(e) => setParam(params, key, e.target.value)}>
-              <option value="">{t.costs.all}</option>
-              {shown.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {`${label(key, o.value)} (${o.n})`}
-                </option>
-              ))}
-            </select>
-            <small className="muted">{t.costs.filterCoverage[key](covered, of)}</small>
+      <div className="costs-filter-grid">
+        {(['since', 'until'] as const).map((k) => (
+          <div key={k} className="costs-field">
+            <label htmlFor={`${id}-${k}`}>{t.costs[k]}</label>
+            <input
+              id={`${id}-${k}`}
+              type="date"
+              value={params.get(k) ?? r[k]}
+              onChange={(e) => setParam(params, k, e.target.value)}
+            />
           </div>
-        )
-      })}
+        ))}
+        {filters.map(({ key, options, covered }) => {
+          const value = params.get(key) ?? ''
+          // A value from the hash the period does not hold still shows, with n 0.
+          const shown = value && !options.some((o) => o.value === value) ? [...options, { value, n: 0 }] : options
+          return (
+            <div key={key} className="costs-field">
+              <label htmlFor={`${id}-${key}`}>{t.costs.filterNames[key]}</label>
+              <select id={`${id}-${key}`} value={value} onChange={(e) => setParam(params, key, e.target.value)}>
+                <option value="">{t.costs.all}</option>
+                {shown.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {`${label(key, o.value)} (${o.n})`}
+                  </option>
+                ))}
+              </select>
+              <small>{t.costs.filterCoverage[key](covered, of)}</small>
+            </div>
+          )
+        })}
+      </div>
     </fieldset>
   )
 }
@@ -251,18 +259,18 @@ function Weekly({ r, onMarker }: { r: CostsReport; onMarker: (id: string) => voi
           <thead>
             <tr>
               <th>{t.dashboard.processWeekCols.week}</th>
-              <th>{t.costs.compareRows.median}</th>
-              <th>{t.costs.compareRows.mean}</th>
-              <th>{t.costs.compareRows.n}</th>
+              <th className="num">{t.costs.compareRows.median}</th>
+              <th className="num">{t.costs.compareRows.mean}</th>
+              <th className="num">{t.costs.compareRows.n}</th>
             </tr>
           </thead>
           <tbody>
             {r.weeks.map((w) => (
               <tr key={w.week}>
                 <td>{w.week}</td>
-                <td>{fmtTok(w.median, lang)}</td>
-                <td>{fmtTok(w.mean, lang)}</td>
-                <td>{w.n}</td>
+                <td className="num">{fmtTok(w.median, lang)}</td>
+                <td className="num">{fmtTok(w.mean, lang)}</td>
+                <td className="num">{w.n}</td>
               </tr>
             ))}
           </tbody>
@@ -343,7 +351,7 @@ function Compare({ weeks }: { weeks: CostsReport['weeks'] }) {
   const a = find(pick.a, weeks.length - 2)
   const b = find(pick.b, weeks.length - 1)
   const select = (side: 'a' | 'b', label: string, value: string) => (
-    <div>
+    <div className="costs-field">
       <label htmlFor={`${id}-${side}`}>{label}</label>
       <select id={`${id}-${side}`} value={value} onChange={(e) => setPick({ ...pick, [side]: e.target.value })}>
         {weeks.map((w) => (
@@ -362,63 +370,73 @@ function Compare({ weeks }: { weeks: CostsReport['weeks'] }) {
   return (
     <>
       <h3>{t.costs.compare}</h3>
-      <div className="costs-filters">
+      <div className="costs-compare-pick">
         {select('a', t.costs.weekA, a.week)}
         {select('b', t.costs.weekB, b.week)}
       </div>
-      <table aria-label={t.costs.compare}>
-        <thead>
-          <tr>
-            <th />
-            <th>{a.week}</th>
-            <th>{b.week}</th>
-            <th>{t.costs.delta}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(([name, va, vb, fmt]) => (
-            <tr key={name}>
-              <th scope="row">{name}</th>
-              <td>{fmt(va)}</td>
-              <td>{fmt(vb)}</td>
-              <td>{fmtDelta(va, vb)}</td>
+      <div className="dash-process-scroll">
+        <table aria-label={t.costs.compare}>
+          <thead>
+            <tr>
+              <th />
+              <th className="num">{a.week}</th>
+              <th className="num">{b.week}</th>
+              <th className="num">{t.costs.delta}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map(([name, va, vb, fmt]) => (
+              <tr key={name}>
+                <th scope="row">{name}</th>
+                <td className="num">{fmt(va)}</td>
+                <td className="num">{fmt(vb)}</td>
+                <td className="num">{fmtDelta(va, vb)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   )
 }
 
 // Stacked: a barra empilhada de uma composição e a legenda com fração e valor.
+// Cada entrada é [chave, rótulo, valor]; a chave escolhe a cor.
 function Stacked({
   entries,
   label,
   listLabel,
 }: {
-  entries: [string, number][]
+  entries: [string, string, number][]
   label: (parts: string) => string
   listLabel: string
 }) {
   const { lang } = useT()
-  const total = entries.reduce((s, [, v]) => s + v, 0)
-  const parts = entries.map(([name, v]) => `${name} ${fmtPct(total ? v / total : 0)} · ${fmtTok(v, lang)}`)
+  const total = entries.reduce((s, [, , v]) => s + v, 0)
+  const pct = entries.map(([, , v]) => fmtPct(total ? v / total : 0))
+  const tok = entries.map(([, , v]) => fmtTok(v, lang))
+  const parts = entries.map(([, name], i) => `${name} ${pct[i]} · ${tok[i]}`)
+  let n = 0
+  const seg = entries.map(([key]) => (key === 'unknown' ? 'costs-seg-unknown' : `costs-seg-${(n++ % SEG_COUNT) + 1}`))
   let at = 0
   return (
     <>
       <svg className="costs-bar" viewBox="0 0 640 20" preserveAspectRatio="none" role="img" aria-label={label(parts.join('; '))}>
-        {entries.map(([name, v], i) => {
+        {entries.map(([key, , v], i) => {
           const w = total ? (v / total) * 640 : 0
-          const rect = <rect key={name} x={at} y={0} width={w} height={20} fill={SEG_COLORS[i % SEG_COLORS.length]} />
+          const rect = <rect key={key} className={seg[i]} x={at} y={0} width={w} height={20} />
           at += w
           return rect
         })}
       </svg>
       <ul className="costs-legend" aria-label={listLabel}>
-        {entries.map(([name], i) => (
-          <li key={name}>
-            <span className="costs-swatch" style={{ background: SEG_COLORS[i % SEG_COLORS.length] }} aria-hidden="true" />
-            {parts[i]}
+        {entries.map(([key, name], i) => (
+          <li key={key}>
+            <span className={`costs-swatch ${seg[i]}`} aria-hidden="true" />
+            {name}{' '}
+            <span className="costs-legend-value">
+              <span>{pct[i]}</span> · <span>{tok[i]}</span>
+            </span>
           </li>
         ))}
       </ul>
@@ -428,7 +446,9 @@ function Stacked({
 
 type SortKey = 'id' | 'title' | 'level' | 'weighted' | 'gauntlet' | 'models' | 'rounds' | 'defeats'
 
-const models = (f: CostFeature) => Object.keys(f.by_model ?? {}).sort().join(', ')
+const modelList = (f: CostFeature) => Object.keys(f.by_model ?? {}).sort()
+const models = (f: CostFeature) => modelList(f).join(', ')
+const NUM_COLS = new Set<SortKey>(['weighted', 'gauntlet', 'rounds'])
 
 const sortValue: Record<SortKey, (f: CostFeature) => string | number> = {
   id: (f) => f.id,
@@ -457,12 +477,13 @@ function FeatureTable({ features }: { features: CostFeature[] }) {
     <section>
       <h2>{t.costs.table}</h2>
       <div className="dash-process-scroll">
-        <table aria-label={t.costs.table}>
+        <table className="costs-features" aria-label={t.costs.table}>
           <thead>
             <tr>
               {cols.map((k) => (
                 <th
                   key={k}
+                  className={NUM_COLS.has(k) ? 'num' : undefined}
                   aria-sort={sort?.key === k ? (sort.desc ? 'descending' : 'ascending') : 'none'}
                 >
                   <button
@@ -479,16 +500,25 @@ function FeatureTable({ features }: { features: CostFeature[] }) {
           <tbody>
             {rows.map((f) => (
               <tr key={f.id}>
-                <td>
+                <td className="costs-id">
                   <a href={`#/costs/${encodeURIComponent(f.id)}`}>{f.id}</a>
                 </td>
-                <td>{f.title}</td>
-                <td>{f.level ? (t.costs.levels[f.level] ?? f.level) : t.costs.unknownValue}</td>
-                <td>{fmtTok(f.weighted, lang)}</td>
-                <td>{f.gauntlet_share === null ? '—' : fmtPct(f.gauntlet_share)}</td>
-                <td>{models(f) || '—'}</td>
-                <td>{f.rounds}</td>
-                <td>{f.defeats > 0 ? t.costs.yes : t.costs.no}</td>
+                <td className="costs-title">{f.title}</td>
+                <td className="costs-level">{f.level ? (t.costs.levels[f.level] ?? f.level) : t.costs.unknownValue}</td>
+                <td className="num">{fmtTok(f.weighted, lang)}</td>
+                <td className="num">{f.gauntlet_share === null ? '—' : fmtPct(f.gauntlet_share)}</td>
+                <td className="costs-models">
+                  {modelList(f).length === 0
+                    ? '—'
+                    : modelList(f).map((m, i) => (
+                        <Fragment key={m}>
+                          {i > 0 && ', '}
+                          <span>{m}</span>
+                        </Fragment>
+                      ))}
+                </td>
+                <td className="num">{f.rounds}</td>
+                <td className={f.defeats > 0 ? 'costs-defeat' : undefined}>{f.defeats > 0 ? t.costs.yes : t.costs.no}</td>
               </tr>
             ))}
           </tbody>
@@ -564,7 +594,7 @@ export function CostDetailPage({ id }: { id: string }) {
       <section>
         <h2>{title}</h2>
         <Stacked
-          entries={rows.map(([k]) => [name(k), weighted[k] ?? 0])}
+          entries={rows.map(([k]) => [k, name(k), weighted[k] ?? 0])}
           label={(parts) => `${title}: ${parts}`}
           listLabel={title}
         />
@@ -574,10 +604,12 @@ export function CostDetailPage({ id }: { id: string }) {
               <tr>
                 <th>{t.costs.rawCols.name}</th>
                 {COUNTERS.map((c) => (
-                  <th key={c}>{t.costs.weightNames[c]}</th>
+                  <th key={c} className="num">
+                    {t.costs.weightNames[c]}
+                  </th>
                 ))}
-                <th>{t.costs.rawCols.weighted}</th>
-                <th>{t.costs.rawCols.share}</th>
+                <th className="num">{t.costs.rawCols.weighted}</th>
+                <th className="num">{t.costs.rawCols.share}</th>
               </tr>
             </thead>
             <tbody>
@@ -585,19 +617,23 @@ export function CostDetailPage({ id }: { id: string }) {
                 <tr key={k}>
                   <th scope="row">{name(k)}</th>
                   {COUNTERS.map((x) => (
-                    <td key={x}>{num(c[x])}</td>
+                    <td key={x} className="num">
+                      {num(c[x])}
+                    </td>
                   ))}
-                  <td>{num(weighted[k] ?? 0)}</td>
-                  <td>{fmtPct(d.weighted ? (weighted[k] ?? 0) / d.weighted : 0)}</td>
+                  <td className="num">{num(weighted[k] ?? 0)}</td>
+                  <td className="num">{fmtPct(d.weighted ? (weighted[k] ?? 0) / d.weighted : 0)}</td>
                 </tr>
               ))}
-              <tr>
+              <tr className="costs-total">
                 <th scope="row">{t.costs.total}</th>
                 {COUNTERS.map((x) => (
-                  <td key={x}>{num(d.tokens[x])}</td>
+                  <td key={x} className="num">
+                    {num(d.tokens[x])}
+                  </td>
                 ))}
-                <td>{num(d.weighted)}</td>
-                <td>100%</td>
+                <td className="num">{num(d.weighted)}</td>
+                <td className="num">100%</td>
               </tr>
             </tbody>
           </table>

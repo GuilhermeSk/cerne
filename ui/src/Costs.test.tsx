@@ -217,6 +217,44 @@ describe('Custos — composição por papel (crit. 3)', () => {
   })
 })
 
+// F-0424 crit. 6: segment colours come from theme tokens (classes styled in
+// app.css), and "unknown" is the neutral one wherever it falls in the bar.
+function unknownSegment(bar: Element, legend: HTMLElement) {
+  const items = within(legend).getAllByRole('listitem')
+  const i = items.findIndex((li) => li.textContent?.startsWith('desconhecido'))
+  return { rect: bar.querySelectorAll('rect')[i], swatch: items[i].querySelector('.costs-swatch') }
+}
+
+function expectNoLiteralColour(container: HTMLElement) {
+  for (const el of container.querySelectorAll('.costs-bar rect, .costs-swatch')) {
+    expect(el.getAttribute('fill')).toBeNull()
+    expect(el.getAttribute('style') ?? '').not.toMatch(/#|rgb/)
+  }
+}
+
+describe('Custos — cor da composição (F-0424 crit. 6)', () => {
+  it('desconhecido no fim da barra de papéis usa o token neutro', async () => {
+    const { container } = render(<Costs hash="#/costs" />)
+    const legend = await screen.findByRole('list', { name: 'Composição por papel' })
+    const bar = screen.getByRole('img', { name: /Composição do custo por papel/ })
+    const { rect, swatch } = unknownSegment(bar, legend)
+    expect(rect).toHaveClass('costs-seg-unknown')
+    expect(swatch).toHaveClass('costs-seg-unknown')
+    expect(bar.querySelector('rect')).toHaveClass('costs-seg-1')
+    expectNoLiteralColour(container)
+  })
+
+  it('desconhecido como único segmento do detalhe continua neutro', async () => {
+    api.fetchCostDetail.mockResolvedValue({ ...detail, by_model: {}, weighted_by_model: { unknown: 100 } })
+    const { container } = render(<CostDetailPage id="F-0001" />)
+    const legend = await screen.findByRole('list', { name: 'Por modelo' })
+    const { rect, swatch } = unknownSegment(screen.getByRole('img', { name: /Por modelo/ }), legend)
+    expect(rect).toHaveClass('costs-seg-unknown')
+    expect(swatch).toHaveClass('costs-seg-unknown')
+    expectNoLiteralColour(container)
+  })
+})
+
 describe('Custos — tabela (crit. 4)', () => {
   it('lista as colunas e ordena por qualquer uma; a linha abre o detalhe', async () => {
     render(<Costs hash="#/costs" />)
