@@ -1250,7 +1250,7 @@ func resolveOrigin(onBehalf string) (origin, quote string, err error) {
 	if onBehalf != "" && quote == "" {
 		return "", "", ErrOnBehalfEmpty
 	}
-	if quote == "" && isAgentActor(os.Getenv("CERNE_ACTOR")) {
+	if quote == "" && isAgentActor(actorEnv()) {
 		return "agent", "", nil
 	}
 	return "human", quote, nil

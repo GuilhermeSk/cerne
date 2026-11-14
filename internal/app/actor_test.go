@@ -172,3 +172,13 @@ func TestCursorAgentShellIsAgent(t *testing.T) {
 		t.Errorf("CURSOR_AGENT=0: CheckHumanGate = %v, want nil", err)
 	}
 }
+
+// TestCursorAgentShellOrigin (F-0428 crit. 6): an entity a Cursor agent creates
+// without --on-behalf is the agent's own request, like one from Claude Code.
+func TestCursorAgentShellOrigin(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "")
+	t.Setenv("CURSOR_AGENT", "1")
+	if origin, _, err := resolveOrigin(""); err != nil || origin != "agent" {
+		t.Fatalf("resolveOrigin = %q, %v; want agent", origin, err)
+	}
+}
