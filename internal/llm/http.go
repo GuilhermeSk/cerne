@@ -76,6 +76,7 @@ func ConfiguredProviders(cfg project.LLMConfig) []string {
 //   - byo-key (default for any other mode): provider "anthropic" or "openai"
 //     (F-0323; any other value errors, naming it), reads the API key from os.Getenv(cfg.KeyEnv)
 //     (ErrAPIKeyMissing when empty), and returns an *httpProvider.
+//
 // cliModel is the model a subscription CLI is asked for: llm.model only when no
 // provider is set. A model chosen for a byo-key provider (gpt-5, an Anthropic
 // id) must never reach a CLI that would reject it or silently differ (F-0414).

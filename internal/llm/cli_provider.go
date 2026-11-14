@@ -159,7 +159,11 @@ func describeExit(name, state string, stdout, stderr []byte) string {
 // own explanation via describeExit; an exec error (e.g. executable not found)
 // is reported with an actionable message naming the binary.
 func execRun(ctx context.Context, dir, name string, args []string, stdin string) (string, string, error) {
-	return execRunEnv(ctx, dir, name, args, stdin, nil)
+	var env []string
+	if extra, _ := ctx.Value(envKey{}).([]string); len(extra) > 0 {
+		env = append(os.Environ(), extra...)
+	}
+	return execRunEnv(ctx, dir, name, args, stdin, env)
 }
 
 // agentRun is the runner of the agentic provider (F-0260): same exec, plus the
@@ -253,6 +257,13 @@ var oneShotIsolation = []string{"--safe-mode", "--tools", ""}
 // isUnknownFlag reports whether err looks like the CLI rejecting a flag it
 // does not know — an old Claude Code without --allowedTools. Covers the
 // cobra ("unknown flag") and commander ("unknown option") phrasings.
+// rejectedFlag reads the argument errors of the Codex and Gemini CLIs (clap and
+// yargs word them differently from Claude Code's).
+func rejectedFlag(err error) bool {
+	msg := err.Error()
+	return isUnknownFlag(err) || strings.Contains(msg, "unexpected argument") || strings.Contains(msg, "unrecognized") || strings.Contains(msg, "Unknown argument")
+}
+
 func isUnknownFlag(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "unknown flag") || strings.Contains(msg, "unknown option")
@@ -326,16 +337,27 @@ func (p *cliProvider) completeCodex(ctx context.Context, prompt string) (string,
 	}
 	defer cleanup()
 	outFile := filepath.Join(dir, "answer.txt")
-	args := []string{"exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "-o", outFile}
+	// Isolation (F-0414, R-0096): the CLI gets no shell, no connectors, no hosted
+	// search, no user config or rules, and no AGENTS.md — an indexed document
+	// that tries to steer it has nothing to act with.
+	args := []string{"exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
+		"--ignore-user-config", "--ignore-rules", "--disable", "shell_tool", "--disable", "apps",
+		"-c", `web_search="disabled"`, "-c", "project_doc_max_bytes=0", "-o", outFile}
 	if p.model != "" {
 		args = append(args, "-m", p.model)
 	}
 	args = append(args, "-")
 	start := time.Now()
 	if _, _, err := p.run(ctx, dir, p.bin, args, prompt); err != nil {
-		hint := "run 'codex login' (subscription) or use another mode"
-		if strings.Contains(err.Error(), "install Codex CLI") {
+		if rejectedFlag(err) {
+			return "", fmt.Errorf("%w: this Codex CLI does not know an isolation flag cerne needs — update it (npm i -g @openai/codex); cerne will not run it with less isolation: %w", ErrCodexCLI, err)
+		}
+		hint := "use another mode"
+		switch {
+		case strings.Contains(err.Error(), "install Codex CLI"):
 			hint = "install Codex CLI and ensure it is on PATH"
+		case authErrorRE.MatchString(err.Error()):
+			hint = "run 'codex login' (subscription) or use another mode"
 		}
 		return "", cliFailure(ctx, start, ErrCodexCLI, "Codex CLI (codex exec)", err, hint)
 	}
@@ -345,6 +367,9 @@ func (p *cliProvider) completeCodex(ctx context.Context, prompt string) (string,
 	}
 	return strings.TrimSpace(string(b)), nil
 }
+
+// authErrorRE recognizes a CLI error that a login fixes.
+var authErrorRE = regexp.MustCompile(`(?i)401|unauthori|log(ged)? ?in|sign(ed)? ?in|not authenticated|auth`)
 
 var exitStatusRE = regexp.MustCompile(`exit status (\d+)`)
 
@@ -365,13 +390,24 @@ func (p *cliProvider) completeGemini(ctx context.Context, prompt string) (string
 		return "", fmt.Errorf("%w: %w", ErrGeminiCLI, err)
 	}
 	defer cleanup()
-	args := []string{"--output-format", "json", "--approval-mode", "plan"}
+	// Isolation (F-0414, R-0094): the system settings file overrides every other
+	// one, and leaves the CLI no tool, no MCP server and no context file; -e none
+	// turns the extensions off.
+	settings := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(settings, []byte(geminiLockedSettings()), 0o600); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrGeminiCLI, err)
+	}
+	ctx = context.WithValue(ctx, envKey{}, []string{"GEMINI_CLI_SYSTEM_SETTINGS_PATH=" + settings})
+	args := []string{"--output-format", "json", "--approval-mode", "plan", "-e", "none"}
 	if p.model != "" {
 		args = append(args, "-m", p.model)
 	}
 	start := time.Now()
 	out, _, err := p.run(ctx, dir, p.bin, args, prompt)
 	if err != nil {
+		if rejectedFlag(err) {
+			return "", fmt.Errorf("%w: this Gemini CLI does not know an isolation flag cerne needs — update it (npm i -g @google/gemini-cli); cerne will not run it with less isolation: %w", ErrGeminiCLI, err)
+		}
 		hint := "run gemini and sign in (or set GEMINI_API_KEY), then retry"
 		if strings.Contains(err.Error(), "install Gemini CLI") {
 			hint = "install Gemini CLI and ensure it is on PATH"
@@ -391,5 +427,31 @@ func (p *cliProvider) completeGemini(ctx context.Context, prompt string) (string
 	if r.Error != nil && r.Error.Message != "" {
 		return "", fmt.Errorf("%w: %s", ErrGeminiCLI, r.Error.Message)
 	}
-	return strings.TrimSpace(r.Response), nil
+	answer := strings.TrimSpace(r.Response)
+	if answer == "" {
+		return "", fmt.Errorf("%w: gemini returned no answer — check the Gemini CLI version and that it is signed in", ErrGeminiCLI)
+	}
+	return answer, nil
 }
+
+// geminiBuiltinTools are the built-in tool names the locked settings exclude.
+var geminiBuiltinTools = []string{"read_file", "read_many_files", "glob", "search_file_content", "list_directory",
+	"run_shell_command", "web_fetch", "google_web_search", "save_memory", "write_file", "replace"}
+
+// geminiLockedSettings is the system settings.json of a one-shot call. The
+// core allowlist holds only a name no tool has; exclude names every built-in
+// as well, so a name this list misses in a newer CLI is still not allowed.
+func geminiLockedSettings() string {
+	b, _ := json.Marshal(map[string]any{
+		"mcpServers": map[string]any{},
+		"mcp":        map[string]any{"allowed": []string{"__cerne_none__"}},
+		"tools":      map[string]any{"core": []string{"__cerne_no_tool__"}, "exclude": geminiBuiltinTools},
+		"context":    map[string]any{"fileName": []string{"__cerne_none__.md"}},
+	})
+	return string(b)
+}
+
+// envKey carries extra child environment (KEY=VALUE) from a provider to the
+// runner through the context, so the runner signature stays what every fake
+// in the tests already implements.
+type envKey struct{}
