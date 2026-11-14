@@ -256,6 +256,13 @@ func TransitionFeatureOpForce(op *telemetry.Op, repoDir, projDir, id string, act
 				return "", err
 			}
 		}
+		// A task has no approve: its start is the first gate before the work,
+		// so its own bar is charged there (T-0007), before any write.
+		if action == domain.ActionStart && gauntletOn {
+			if err := checkTaskBar(repoDir, f); err != nil {
+				return "", err
+			}
+		}
 
 		// Result record gate (F-0303): the lint's result rules, charged while the
 		// result is still editable — after complete it is frozen out of .docs/.

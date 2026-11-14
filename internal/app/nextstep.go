@@ -77,7 +77,7 @@ func docRef(projDir, id, name string) string {
 
 // NextStep decides the next step of feature id by CALLING the checks the
 // transitions run (ApproveReadiness, CheckStartNotStale, checkActionDocs,
-// guardParallelStart, CheckCompleteResult, PrecheckStamp) — it copies none, so
+// checkTaskBar, guardParallelStart, CheckCompleteResult, PrecheckStamp) — it copies none, so
 // it never sends the agent to a command a gate refuses; the start's plan
 // warning (F-0377) rides on its step. Read-only.
 func NextStep(repoDir, projDir, id string) (Step, error) {
@@ -142,6 +142,11 @@ func NextStep(repoDir, projDir, id string) (Step, error) {
 		}
 		if err := checkActionDocs(id, domain.ActionStart, docs); err != nil {
 			return edit("the start would refuse: "+errors.Unwrap(err).Error(), "plan.md")
+		}
+		if gates.GauntletEnabled() {
+			if err := checkTaskBar(repoDir, f); err != nil {
+				return edit("the start would refuse: "+err.Error(), "spec.md")
+			}
 		}
 		if _, _, err := guardParallelStart(repoDir, projDir, id, false); err != nil {
 			s.Step = "the start would refuse: " + err.Error()
