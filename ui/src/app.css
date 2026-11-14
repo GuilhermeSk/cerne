@@ -140,7 +140,7 @@
   --cost-seg-5: #7cbc72;
   --cost-seg-6: #c79bbc;
   --cost-seg-7: #e8cf6a;
-  --cost-seg-unknown: #6e6a5f;
+  --cost-seg-unknown: #8a857a;
 }
 
 :root {
@@ -2064,7 +2064,8 @@ h2 {
 .costs tbody tr:first-child > * { border-top: 0; }
 .costs tbody th { font-weight: 600; }
 .costs .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.costs-total > * { border-top: 1px solid var(--border-strong); font-weight: 600; }
+/* .costs na frente: o .dash-process td (0,1,1) também pinta border-top. */
+.costs .costs-total > * { border-top: 1px solid var(--border-strong); font-weight: 600; }
 
 .costs-features tbody tr:hover { background: var(--surface-2); }
 .costs-features td { padding-top: 0.5rem; padding-bottom: 0.5rem; }
@@ -2105,12 +2106,14 @@ h2 {
   width: 8px;
   height: 5px;
   background: currentColor;
+  forced-color-adjust: none;
 }
 .costs th[aria-sort='ascending'] .costs-sort::after { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .costs th[aria-sort='descending'] .costs-sort::after { clip-path: polygon(0 0, 100% 0, 50% 100%); }
 
 /* Composição: a barra e a legenda; cada cor nomeia um papel ou modelo. */
-.costs .costs-bar { display: block; width: 100%; min-width: 0; height: 14px; }
+/* As cores nomeiam dado: o modo de alto contraste não as apaga. */
+.costs .costs-bar { display: block; width: 100%; min-width: 0; height: 14px; forced-color-adjust: none; }
 .costs-bar rect { stroke: var(--bg); stroke-width: 2px; vector-effect: non-scaling-stroke; }
 .costs-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 0.3rem 1.25rem; padding: 0; margin: 0.75rem 0 1.25rem; font-size: 0.9rem; }
 .costs-composition .costs-legend { margin-bottom: 0; }
@@ -2124,7 +2127,7 @@ h2 {
 .costs-composition .costs-legend-value > span:first-child { min-width: 3ch; }
 .costs-composition .costs-legend-value > span:last-child { min-width: 7ch; }
 .costs-composition > .muted { margin: 0.75rem 0 0; font-size: 0.85rem; }
-.costs-swatch { flex: none; width: 0.7rem; height: 0.7rem; }
+.costs-swatch { flex: none; width: 0.7rem; height: 0.7rem; forced-color-adjust: none; }
 .costs-seg-1 { fill: var(--cost-seg-1); background: var(--cost-seg-1); }
 .costs-seg-2 { fill: var(--cost-seg-2); background: var(--cost-seg-2); }
 .costs-seg-3 { fill: var(--cost-seg-3); background: var(--cost-seg-3); }

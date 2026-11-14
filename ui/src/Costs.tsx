@@ -518,7 +518,7 @@ function FeatureTable({ features }: { features: CostFeature[] }) {
                       ))}
                 </td>
                 <td className="num">{f.rounds}</td>
-                <td className={f.defeats > 0 ? 'costs-defeat' : 'muted'}>{f.defeats > 0 ? t.costs.yes : t.costs.no}</td>
+                <td className={f.defeats > 0 ? 'costs-defeat' : undefined}>{f.defeats > 0 ? t.costs.yes : t.costs.no}</td>
               </tr>
             ))}
           </tbody>
