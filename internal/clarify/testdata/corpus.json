@@ -471,6 +471,19 @@
       "name": "known limit (F-0317): an unclosed opener absorbs a marker that starts later on the same line, as on main",
       "content": "Use `[ESCLARECER:` p.ex. [ESCLARECER: real\npergunta?]",
       "spans": []
+    },
+    {
+      "name": "B-0001: a ] inside inline code does not close the marker",
+      "content": "x [ESCLARECER: o bloco `[gates] accept = \"auto\"` continua humano?] y",
+      "spans": [
+        {
+          "raw": "[ESCLARECER: o bloco `[gates] accept = \"auto\"` continua humano?]",
+          "offset": 2,
+          "resolved": false
+        }
+      ],
+      "question": "o bloco `[gates] accept = \"auto\"` continua humano?",
+      "options": []
     }
   ],
   "_resolve_comment": "Resolution parity (F-0193): each case rewrites ONE anchored open marker to its resolved form. Go replays via clarify.Resolve + manual splice (TestResolveCorpus); TS replays via resolveMarker (Clarify.test.tsx). want=null means the rewriter must refuse (anchor mismatch or already resolved).",
@@ -570,6 +583,14 @@
       "offset": 8,
       "answer": "json",
       "want": "> Nota: [ESCLARECIDO: qual formato? → json] fim"
+    },
+    {
+      "name": "B-0001: a ] inside inline code stays in the question on resolve",
+      "content": "x [ESCLARECER: o bloco `[gates] accept = \"auto\"` continua humano?] y",
+      "raw": "[ESCLARECER: o bloco `[gates] accept = \"auto\"` continua humano?]",
+      "offset": 2,
+      "answer": "sim",
+      "want": "x [ESCLARECIDO: o bloco `[gates] accept = \"auto\"` continua humano? → sim] y"
     }
   ],
   "_correct_comment": "Correction parity (F-0197): each case rewrites ONE anchored RESOLVED marker, appending the new answer to its trail instead of replacing it. Go replays via clarify.Correct + manual splice (TestCorrectCorpus); TS replays via correctMarker (Clarify.test.tsx). want=null means the rewriter must refuse (anchor mismatch, or a still-open marker — correcting an open marker is answering it). Anchor offsets stay BEFORE any arrow: the arrow is 3 bytes in Go and 1 code unit in TS, so a later offset would not agree on both sides.",
@@ -645,6 +666,14 @@
       "offset": 2,
       "answer": "GCS",
       "want": "x [ESCLARECIDO: qual backend? → S3 → GCS] y"
+    },
+    {
+      "name": "B-0001: a ] inside inline code stays in the question on correct",
+      "content": "x [ESCLARECIDO: o bloco `[gates] accept = \"auto\"` continua humano? → sim] y",
+      "raw": "[ESCLARECIDO: o bloco `[gates] accept = \"auto\"` continua humano? → sim]",
+      "offset": 2,
+      "answer": "nao",
+      "want": "x [ESCLARECIDO: o bloco `[gates] accept = \"auto\"` continua humano? → sim → nao] y"
     }
   ]
 }
