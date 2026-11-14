@@ -51,12 +51,12 @@ var ErrFixesCycle = errors.New("a feature cannot fix itself or the feature that 
 // (superseded/rejected): new work is not filed under a dead epic.
 var ErrParentTerminal = errors.New("the parent feature (epic) is closed")
 
-// ErrParentRequired is returned when creating a task without a parent: a task
-// is an execution unit of a PRD, never free-floating (F-0203).
 // ErrOnBehalfEmpty refuses a blank --on-behalf quote (T-0005): the claim that a
 // human asked is only auditable with their words.
 var ErrOnBehalfEmpty = errors.New("--on-behalf needs the human's words, not a blank quote")
 
+// ErrParentRequired is returned when creating a task without a parent: a task
+// is an execution unit of a PRD, never free-floating (F-0203).
 var ErrParentRequired = errors.New("a task requires --parent (the F-/E- it decomposes)")
 
 // ErrParentNotCommitted is returned when a task's parent is still a candidate:
