@@ -35,6 +35,13 @@ const INSTALL: Record<string, string> = {
   gemini: 'npm i -g @google/gemini-cli',
 }
 const KEY_ENV: Record<string, string> = { gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY' }
+// A subscription CLI uses its own default model and endpoint: choosing one (or
+// going back to detection) drops what a byo-key setup left in the scope.
+const RESET_CLI: [string, string | null][] = [
+  ['llm.model', null],
+  ['llm.provider', null],
+  ['llm.base_url', null],
+]
 const LOCAL_ENDPOINT = 'http://localhost:11434/v1'
 
 // The Settings page's group <h2>, which labels this region.
@@ -53,7 +60,7 @@ export function describeLLM(c: LLMConfig, ai: Texts): string {
   const title = ai.paths[path].title
   if (path === 'delegation') return `${title} — ${ai.delegationWho}`
   if (path === 'subscription') {
-    const cli = c.clis.find((x) => x.mode === c.mode)
+    const cli = c.clis?.find((x) => x.mode === c.mode)
     return `${title} — ${ai.clis[cli?.name ?? ''] ?? c.mode} · ${c.model || ai.modelCli}`
   }
   const catalog = c.provider === 'anthropic' ? c.models?.find((m) => m.id === c.default_model)?.label : undefined
@@ -93,7 +100,7 @@ export function FailureView({ lead, raw, fixLabel, details }: { lead: string; ra
   )
 }
 
-type Outcome = { row: string; state: 'testing' | 'ok' | 'fail' | 'saved'; name: string; error?: string; text?: string }
+type Outcome = { row: string; state: 'testing' | 'ok' | 'fail' | 'saved'; name: string; error?: string; text?: string; note?: string }
 
 export default function AISettings({
   settings,
@@ -170,8 +177,10 @@ export default function AISettings({
   const sel = path ?? active
   const scopeName = scope === 'host' ? 'Host' : '.cernerc'
   // The first llm.* value Project stores: it wins over Host (F-0414).
+  // Only a project mode or provider overrides the host's tuple (a project
+  // model alone is inherited around, not over it).
   const projectKey = (list: ResolvedSetting[]) =>
-    list.find((s) => s.id === 'llm.mode' && s.stored?.project !== undefined) ?? list.find((s) => s.id.startsWith('llm.') && s.stored?.project !== undefined)
+    list.find((s) => s.id === 'llm.mode' && s.stored?.project !== undefined) ?? list.find((s) => s.id === 'llm.provider' && s.stored?.project !== undefined)
   const winner = scope === 'host' ? projectKey(settings) : undefined
   const headId = `${uid}-head`
 
@@ -213,7 +222,7 @@ export default function AISettings({
       setOutcome({ row, state: 'testing', name })
       const r = await testLLM(body)
       setTested((s) => new Set(s).add(row))
-      setOutcome(r.ok ? { row, state: 'ok', name } : { row, state: 'fail', name, error: r.error ?? '' })
+      setOutcome(r.ok ? { row, state: 'ok', name, note: r.note } : { row, state: 'fail', name, error: r.error ?? '', note: r.note })
     })
 
   const list = sel === 'api' || sel === 'gateway' ? PROVIDERS[sel] : []
@@ -221,14 +230,15 @@ export default function AISettings({
   const modelValue = model ?? cfg.model
   // Presets fill cfg.base_url for every provider; only compatible's is the user's.
   const baseValue = baseURL ?? (cfg.provider === 'compatible' && cfg.base_url ? cfg.base_url : LOCAL_ENDPOINT)
-  const key = keys[prov] ?? (prov === cfg.provider ? cfg.key : undefined)
+  const key = keys[prov] ?? cfg.keys?.[prov] ?? (prov === cfg.provider ? cfg.key : undefined)
   const catalog = (cfg.models ?? []).filter((m) => m.provider === 'anthropic' && m.visibility !== 'delisted')
   const title = (p: PathId) => ai.paths[p].title
   const keyState = !key?.set ? ai.keyNone : key.source === 'env' ? ai.keyEnv(key.env) : key.last4 ? ai.keyLast4(key.last4) : ai.keySet
   const typed = keyInput.trim()
   const keyEnv = key?.env ?? KEY_ENV[prov] ?? 'CERNE_LLM_API_KEY'
   const testId = (row: string) => `${uid}-test-${row.replace(':', '-')}`
-  const wouldBe = cfg.clis.find((c) => c.found)
+  const clis = cfg.clis ?? []
+  const wouldBe = clis.find((c) => c.found)
   const wouldBeName = wouldBe ? (ai.clis[wouldBe.name] ?? wouldBe.name) : ai.paths.delegation.title
 
   // Why "Use" is unavailable on the API / gateway forms, said in text.
@@ -252,11 +262,12 @@ export default function AISettings({
   const removeKey = () => run(async () => setKeys({ ...keys, [prov]: await deleteLLMKey(prov) }))
   const useForm = (p: PathId) =>
     write(
+      // llm.mode last: until it lands, a half-written form changes nothing in use.
       [
-        ['llm.mode', 'byo-key'],
         ['llm.provider', prov],
         ['llm.model', modelValue.trim() || null],
         ['llm.base_url', prov === 'compatible' ? baseValue.trim() || null : null],
+        ['llm.mode', 'byo-key'],
       ],
       p,
       testId(p),
@@ -277,6 +288,7 @@ export default function AISettings({
         {o?.state === 'testing' && <p>{ai.testing}</p>}
         {o?.state === 'ok' && <p className="ai-ok">{ai.testOk(o.name)}</p>}
         {o?.state === 'saved' && <p className="ai-ok">{o.text}</p>}
+        {o?.note && <p className="settings-hint">{o.note}</p>}
         {o?.state === 'fail' && <FailureView lead={ai.testFail(o.name)} raw={o.error ?? ''} fixLabel={ai.copyFix} details={ai.details} />}
       </div>
     )
@@ -306,15 +318,18 @@ export default function AISettings({
       )}
       {children}
       <p className="settings-hint">{scope === 'host' ? ai.scopeHintHost : ai.scopeHintProject}</p>
-      {modeSetting?.[scope] !== undefined && (
-        <div className="ai-auto">
-          <button type="button" className="settings-switch" aria-disabled={lockedAttr} onClick={busy ? undefined : () => write([['llm.mode', null]], 'auto', headId, undefined, ai.savedAuto)}>
-            {ai.autoDetect}
-          </button>{' '}
-          <span className="settings-hint">— {ai.wouldBe(wouldBeName)}</span>
-          {result('auto')}
-        </div>
-      )}
+      <div className="ai-auto">
+        {modeSetting?.[scope] !== undefined && (
+          <>
+            <button type="button" className="settings-switch" aria-disabled={lockedAttr} onClick={busy ? undefined : () => write([...RESET_CLI, ['llm.mode', null]], 'auto', headId, undefined, ai.savedAuto)}>
+              {ai.autoDetect}
+            </button>{' '}
+            <span className="settings-hint">— {ai.wouldBe(wouldBeName)}</span>
+          </>
+        )}
+        {/* Mounted even when llm.mode is gone, so the announcement is heard. */}
+        {result('auto')}
+      </div>
       <div className="ai-paths" role="radiogroup" aria-label={ai.pathsLegend}>
         {PATHS.map((p) => {
           const open = p === sel
@@ -353,7 +368,7 @@ export default function AISettings({
               {open && p === 'delegation' && result(p)}
               {open && p === 'subscription' && (
                 <ul className="ai-clis">
-                  {cfg.clis.map((c) => {
+                  {clis.map((c) => {
                     const name = ai.clis[c.name] ?? c.name
                     const row = `cli:${c.name}`
                     const lock = busy || !c.found || undefined
@@ -372,7 +387,7 @@ export default function AISettings({
                               aria-label={ai.useNamed(name)}
                               aria-disabled={lock}
                               aria-describedby={c.found ? undefined : `${uid}-nf-${c.name}`}
-                              onClick={lock ? undefined : () => write([['llm.mode', c.mode]], row, testId(row))}
+                              onClick={lock ? undefined : () => write([...RESET_CLI, ['llm.mode', c.mode]], row, testId(row))}
                             >
                               {ai.use}
                             </button>

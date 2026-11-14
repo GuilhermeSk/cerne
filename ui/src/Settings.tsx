@@ -123,8 +123,17 @@ export default function Settings({ group: asked = 'general' }: { group?: Setting
   // The AI page opens on Host (F-0414): a subscription is personal, and a
   // Project value would pin it for every teammate. Only the initial value on
   // entering the group; the selector stays free.
+  const beforeAI = useRef<SettingScope | null>(null)
   useEffect(() => {
-    if (asked === 'ai') setScope('host')
+    if (asked !== 'ai') return
+    setScope((s) => {
+      beforeAI.current = s
+      return 'host'
+    })
+    return () => {
+      if (beforeAI.current) setScope(beforeAI.current)
+      beforeAI.current = null
+    }
   }, [asked])
 
   // After the commit that removed the pressed control, hand the focus to the

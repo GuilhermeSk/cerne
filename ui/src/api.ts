@@ -1237,11 +1237,13 @@ export type LLMKeyStatus = { env: string; set: boolean; source?: 'env' | 'file';
 export type LLMConfig = {
   mode: LLMMode
   source: 'configured' | 'detected' | 'default'
-  clis: { name: string; mode: LLMMode; found: boolean }[]
+  // clis, key and keys describe the serving machine: the remote server omits them.
+  clis?: { name: string; mode: LLMMode; found: boolean }[]
   provider: string
   model: string
   base_url: string
-  key: LLMKeyStatus
+  key?: LLMKeyStatus
+  keys?: Record<string, LLMKeyStatus>
   models?: ModelEntry[]
   default_model?: string
 }
@@ -1257,14 +1259,14 @@ export async function fetchLLMConfig(): Promise<LLMConfig> {
 // O corpo pode levar o formulário não salvo (provider, model, base_url e a chave
 // digitada, usada só nessa chamada, em memória no servidor).
 export type LLMTestBody = { mode?: LLMMode; provider?: string; model?: string; base_url?: string; key?: string }
-export async function testLLM(body: LLMTestBody = {}): Promise<{ ok: boolean; error?: string }> {
+export async function testLLM(body: LLMTestBody = {}): Promise<{ ok: boolean; error?: string; note?: string }> {
   const r = await fetch(`${base()}/config/llm/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   if (!r.ok) throw new Error(await errorMessage(r))
-  return (await r.json()) as { ok: boolean; error?: string }
+  return (await r.json()) as { ok: boolean; error?: string; note?: string }
 }
 
 // putLLMKey / deleteLLMKey gravam e removem a chave do provedor no arquivo de

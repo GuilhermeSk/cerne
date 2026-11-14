@@ -19,9 +19,10 @@ const llmKey = (id: string): ResolvedSetting => ({
   origin: 'default',
   group: 'ai',
 })
+const other: ResolvedSetting = { ...llmKey('graph.enabled'), type: 'bool', default: true, value: true, group: 'interface' }
 const view: SettingsView = {
   files: { project: '/r/.cernerc', host: '/h/settings.toml' },
-  settings: ['llm.mode', 'llm.provider', 'llm.model', 'llm.base_url'].map(llmKey),
+  settings: [...['llm.mode', 'llm.provider', 'llm.model', 'llm.base_url'].map(llmKey), other],
 }
 const config: LLMConfig = {
   mode: 'delegation',
@@ -73,5 +74,30 @@ describe('Settings, ai group (F-0414)', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'llm.mode' } })
     await waitFor(() => expect(screen.queryByRole('radiogroup')).toBeNull())
     expect(screen.getByText('llm.mode')).toBeInTheDocument()
+  })
+
+  it('M5: the Host default holds only on the ai page; leaving it restores the previous scope', async () => {
+    const { rerender } = render(
+      <I18nProvider>
+        <Settings group="interface" />
+      </I18nProvider>,
+    )
+    const pressed = () => screen.getAllByRole('button', { pressed: true }).map((b) => b.textContent)
+    await screen.findAllByText('graph.enabled')
+    expect(pressed()[0]).toMatch(/Projeto/)
+    rerender(
+      <I18nProvider>
+        <Settings group="ai" />
+      </I18nProvider>,
+    )
+    await screen.findByText(/Em uso:/)
+    expect(pressed()[0]).toMatch(/Host/)
+    rerender(
+      <I18nProvider>
+        <Settings group="interface" />
+      </I18nProvider>,
+    )
+    await screen.findAllByText('graph.enabled')
+    await waitFor(() => expect(pressed()[0]).toMatch(/Projeto/))
   })
 })

@@ -457,4 +457,79 @@ describe('AISettings (F-0414)', () => {
     expect(screen.getByText(/seria Claude Code/)).toBeInTheDocument()
     expect(screen.getByText('cerne settings set llm.mode <valor> --scope host')).toBeInTheDocument()
   })
+
+  // ---- Gauntlet round 1 ----
+  const callOrder = (mock: { mock: { calls: unknown[][] } }, id: string) =>
+    mock.mock.calls.findIndex((c) => c[0] === id)
+
+  it('B3: Usar numa CLI limpa model, provider e base_url no escopo e grava llm.mode por último', async () => {
+    mount(noStored, 'host')
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar Gemini CLI' }))
+    await waitFor(() => expect(putSetting).toHaveBeenCalledWith('llm.mode', 'host', 'gemini-cli'))
+    for (const id of ['llm.model', 'llm.provider', 'llm.base_url']) expect(unsetSetting).toHaveBeenCalledWith(id, 'host')
+    const lastUnset = Math.max(...unsetSetting.mock.invocationCallOrder)
+    expect(putSetting.mock.invocationCallOrder[0]).toBeGreaterThan(lastUnset)
+  })
+
+  it('B3: voltar à detecção automática limpa o resto e remove llm.mode por último', async () => {
+    mount([reg('llm.mode', { stored: { project: 'gemini-cli' } }), ...noStored.slice(1)])
+    fireEvent.click(await screen.findByRole('button', { name: 'Voltar à detecção automática' }))
+    await waitFor(() => expect(unsetSetting).toHaveBeenCalledWith('llm.mode', 'project'))
+    const calls = unsetSetting.mock.calls.map((c) => c[0])
+    expect(calls).toEqual(['llm.model', 'llm.provider', 'llm.base_url', 'llm.mode'])
+  })
+
+  it('D2: ao usar uma chave de API, llm.mode é a última escrita', async () => {
+    fetchLLMConfig.mockResolvedValue(cfg({ key: { env: 'ANTHROPIC_API_KEY', set: true, source: 'env' } }))
+    mount()
+    await screen.findByText(/Em uso:/)
+    pick('Chave de API')
+    fireEvent.click(screen.getByRole('button', { name: 'Usar chave de API' }))
+    await waitFor(() => expect(putSetting).toHaveBeenCalledWith('llm.mode', 'project', 'byo-key'))
+    const writes = putSetting.mock.calls.map((c) => c[0])
+    expect(writes[writes.length - 1]).toBe('llm.mode')
+    expect(callOrder(putSetting, 'llm.provider')).toBeLessThan(callOrder(putSetting, 'llm.mode'))
+  })
+
+  it('D4: a chave de outro provedor, já na variável de ambiente, libera o Usar', async () => {
+    fetchLLMConfig.mockResolvedValue(
+      cfg({ keys: { openai: { env: 'OPENAI_API_KEY', set: true, source: 'env' }, anthropic: { env: 'ANTHROPIC_API_KEY', set: false } } }),
+    )
+    mount()
+    await screen.findByText(/Em uso:/)
+    pick('Chave de API')
+    fireEvent.change(screen.getByRole('combobox', { name: 'Provedor' }), { target: { value: 'openai' } })
+    expect(screen.getByRole('button', { name: 'Usar chave de API' })).not.toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByText('Chave definida pela variável OPENAI_API_KEY.')).toBeInTheDocument()
+  })
+
+  it('M1: o anúncio de voltar à detecção automática continua montado depois que llm.mode some das configurações', async () => {
+    fetchLLMConfig.mockResolvedValueOnce(cfg({ source: 'configured', mode: 'gemini-cli' })).mockResolvedValue(cfg())
+    const stored = [reg('llm.mode', { stored: { project: 'gemini-cli' } }), ...noStored.slice(1)]
+    const ui = (settings: ResolvedSetting[]) => (
+      <I18nProvider>
+        <AISettings settings={settings} scope="project" onWritten={() => {}} onScope={() => {}} />
+      </I18nProvider>
+    )
+    const { rerender } = render(ui(stored))
+    fireEvent.click(await screen.findByRole('button', { name: 'Voltar à detecção automática' }))
+    await waitFor(() => expect(unsetSetting).toHaveBeenCalledWith('llm.mode', 'project'))
+    rerender(ui(noStored)) // the page re-read the settings: llm.mode is gone
+    expect(await screen.findByText(/Agora em uso:.*detecção automática/)).toBeInTheDocument()
+  })
+
+  it('M3: só o llm.model gravado no Projeto não avisa que o Projeto sobrepõe o Host', async () => {
+    mount([reg('llm.model', { stored: { project: 'x' } }), reg('llm.mode'), reg('llm.provider'), reg('llm.base_url')], 'host')
+    await screen.findByText(/Em uso:/)
+    expect(screen.queryByRole('button', { name: 'Ir para Projeto' })).toBeNull()
+  })
+
+  it('D3: o teste mostra a nota quando uma variável de ambiente vence a chave digitada', async () => {
+    testLLM.mockResolvedValue({ ok: true, note: 'OPENAI_API_KEY is set in the environment and wins over a saved key in real use.' } as never)
+    mount()
+    await screen.findByText(/Em uso:/)
+    pick('Chave de API')
+    fireEvent.click(screen.getByRole('button', { name: 'Testar Chave de API' }))
+    expect(await screen.findByText(/OPENAI_API_KEY is set in the environment/)).toBeInTheDocument()
+  })
 })
