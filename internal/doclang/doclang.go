@@ -103,6 +103,7 @@ const (
 	Result
 	Decision
 	Runbook
+	Bug // the three-field correction report (T-0006)
 )
 
 // Positions, in their templates, of the sections a reader looks for by role.
@@ -163,6 +164,10 @@ var sections = map[Kind]map[Lang][]string{
 	Decision: {
 		PT: {"Contexto", "Decisão", "Consequências", "Alternativas consideradas", "Implementação e relações"},
 		EN: {"Context", "Decision", "Consequences", "Alternatives considered", "Implementation and relations"},
+	},
+	Bug: {
+		PT: {"Contexto", "Como reproduzir", "Esperado × obtido"},
+		EN: {"Context", "Steps to reproduce", "Expected × actual"},
 	},
 	Runbook: {
 		PT: {"Quando usar", "Pré-requisitos", "Procedimento", "Verificação", "Rollback e troubleshooting"},
