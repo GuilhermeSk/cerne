@@ -10,6 +10,8 @@ import (
 // test of this package may read or write the real profile. Tests that care
 // set their own via t.Setenv.
 func TestMain(m *testing.M) {
+	// F-0414: never probe PATH for a subscription CLI (children inherit this).
+	os.Setenv("CERNE_NO_CLI_DETECT", "1")
 	dir, err := os.MkdirTemp("", "cerne-config-")
 	if err != nil {
 		panic(err)
