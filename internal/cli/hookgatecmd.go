@@ -15,7 +15,9 @@ import (
 
 	"github.com/henriquesakata/cerne/internal/app"
 	"github.com/henriquesakata/cerne/internal/cost"
+	"github.com/henriquesakata/cerne/internal/domain"
 	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // Hook plumbing subcommands (F-0151). Both read the Claude Code hook JSON from
@@ -181,11 +183,12 @@ var (
 )
 
 var (
-	shellSepRe   = regexp.MustCompile(`&&|\|\||[;|&\n]`)
-	quotedRe     = regexp.MustCompile(`"[^"]*"|'[^']*'`)
-	cerneStartRe = regexp.MustCompile(`^(?:\w+=\S*\s+)*(?:\S*/)?cerne\s+(?:-\S+\s+)*work\s+start\b`)
-	cerneTakeRe  = regexp.MustCompile(`^(?:\w+=\S*\s+)*(?:\S*/)?cerne\s+(?:-\S+\s+)*handoff\s+take\b`)
-	helpFlagRe   = regexp.MustCompile(`(^|\s)(-h|--help)(\s|$)`)
+	shellSepRe          = regexp.MustCompile(`&&|\|\||[;|&\n]`)
+	quotedRe            = regexp.MustCompile(`"[^"]*"|'[^']*'`)
+	cerneStartRe        = regexp.MustCompile(`^(?:\w+=\S*\s+)*(?:\S*/)?cerne\s+(?:-\S+\s+)*work\s+start\b`)
+	cerneTakeRe         = regexp.MustCompile(`^(?:\w+=\S*\s+)*(?:\S*/)?cerne\s+(?:-\S+\s+)*handoff\s+take\b`)
+	cerneFeatureStartRe = regexp.MustCompile(`^(?:\w+=\S*\s+)*(?:\S*/)?cerne\s+(?:-\S+\s+)*feature\s+start\b`)
+	helpFlagRe          = regexp.MustCompile(`(^|\s)(-h|--help)(\s|$)`)
 )
 
 // runsCerne reports whether a Bash command line actually RUNS the cerne verb
@@ -195,14 +198,20 @@ var (
 // `echo "cerne work start"` and `git commit -m "... work start"` are
 // mentions, not runs (F-0876).
 func runsCerne(command string, re *regexp.Regexp) bool {
+	return cerneRun(command, re) != ""
+}
+
+// cerneRun is the first command of the line that runs the cerne verb re
+// matches, as runsCerne decides it; "" when none.
+func cerneRun(command string, re *regexp.Regexp) string {
 	blanked := quotedRe.ReplaceAllString(command, `""`)
 	for _, seg := range shellSepRe.Split(blanked, -1) {
 		seg = strings.TrimSpace(seg)
 		if re.MatchString(seg) && !helpFlagRe.MatchString(seg) {
-			return true
+			return seg
 		}
 	}
-	return false
+	return ""
 }
 
 // Unbound warnings: the minted id never reached the hook (F-0876; take F-0376).
@@ -289,6 +298,12 @@ func runHookBindWork(cmd *cobra.Command, format string) {
 		// transition (a refused gate prints an error, not the id -> state).
 		if strings.Contains(string(in.ToolResponse), "in_development") {
 			id = startedIDRe.FindString(ti.Command)
+		} else if run := startedIDRe.FindString(cerneRun(ti.Command, cerneFeatureStartRe)); run != "" {
+			// A pipe or redirect (`2>&1 | tail -5`) cut the transition line, which
+			// comes first: the clone still tells a real start (B-0002).
+			if f, err := store.LoadFeature(filepath.Join(cacheDir, "repo"), run); err == nil && f.State == domain.StateInDevelopment {
+				id = run
+			}
 		}
 	}
 	if id == "" {
