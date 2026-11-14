@@ -380,6 +380,7 @@ func defaultModel() string {
 
 // Byo-key provider names with a preset (F-0414).
 const (
+	llmProviderAnthropic  = "anthropic"
 	llmProviderOpenAI     = "openai"
 	llmProviderGemini     = "gemini"
 	llmProviderOpenRouter = "openrouter"

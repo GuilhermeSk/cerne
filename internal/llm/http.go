@@ -76,8 +76,18 @@ func ConfiguredProviders(cfg project.LLMConfig) []string {
 //   - byo-key (default for any other mode): provider "anthropic" or "openai"
 //     (F-0323; any other value errors, naming it), reads the API key from os.Getenv(cfg.KeyEnv)
 //     (ErrAPIKeyMissing when empty), and returns an *httpProvider.
+// cliModel is the model a subscription CLI is asked for: llm.model only when no
+// provider is set. A model chosen for a byo-key provider (gpt-5, an Anthropic
+// id) must never reach a CLI that would reject it or silently differ (F-0414).
+func cliModel(c project.LLMConfig) string {
+	if c.Provider != "" {
+		return ""
+	}
+	return c.Model
+}
+
 func NewProvider(cfg project.LLMConfig) (Provider, error) {
-	rawModel := cfg.Model // WithDefaults fills an Anthropic model that codex/gemini must not see
+	raw := cfg // WithDefaults fills an Anthropic model and a key variable the CLIs and the key lookup must not see
 	cfg = cfg.WithDefaults()
 	switch mode := ResolveMode(cfg.Mode); mode {
 	case ModeDelegation:
@@ -85,9 +95,9 @@ func NewProvider(cfg project.LLMConfig) (Provider, error) {
 	case ModeClaudeCLI:
 		return &cliProvider{bin: cfg.ClaudeBin, run: execRun}, nil
 	case ModeCodexCLI:
-		return &cliProvider{kind: mode, bin: "codex", model: rawModel, run: execRun}, nil
+		return &cliProvider{kind: mode, bin: "codex", model: cliModel(raw), run: execRun}, nil
 	case ModeGeminiCLI:
-		return &cliProvider{kind: mode, bin: "gemini", model: rawModel, run: execRun}, nil
+		return &cliProvider{kind: mode, bin: "gemini", model: cliModel(raw), run: execRun}, nil
 	}
 	switch cfg.Provider {
 	case providerAnthropic, providerOpenAI, providerGemini, providerOpenRouter, providerCompatible:
@@ -100,7 +110,7 @@ func NewProvider(cfg project.LLMConfig) (Provider, error) {
 	if cfg.BaseURL == "" {
 		return nil, errBaseURLRequired
 	}
-	key, _, err := project.ResolveAPIKey(cfg.KeyEnv)
+	key, _, _, err := raw.ResolveKey()
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +118,7 @@ func NewProvider(cfg project.LLMConfig) (Provider, error) {
 		key = cfg.TestKey
 	}
 	if key == "" && cfg.Provider != providerCompatible {
-		return nil, fmt.Errorf("%w: set the %s environment variable or save the key in Settings", ErrAPIKeyMissing, cfg.KeyEnv)
+		return nil, fmt.Errorf("%w: set the %s environment variable or save the key in Settings", ErrAPIKeyMissing, raw.KeyVar())
 	}
 	if cfg.Provider != providerAnthropic {
 		return &openaiProvider{baseURL: cfg.BaseURL, model: cfg.Model, apiKey: key, httpClient: http.DefaultClient}, nil
@@ -134,6 +144,7 @@ func NewProvider(cfg project.LLMConfig) (Provider, error) {
 // request, never on the conversation. False is the default everywhere, so a
 // caller that forgets it gets the read-only agent.
 func NewAgentProvider(cfg project.LLMConfig, dir string, write bool) (Provider, error) {
+	raw := cfg
 	cfg = cfg.WithDefaults()
 	if ResolveMode(cfg.Mode) == ModeClaudeCLI {
 		tools := AgentReadTools
@@ -147,7 +158,7 @@ func NewAgentProvider(cfg project.LLMConfig, dir string, write bool) (Provider, 
 		}
 		return &cliProvider{bin: cfg.ClaudeBin, run: agentRun, dir: dir, agentTools: tools, deniedTools: denied}, nil
 	}
-	return NewProvider(cfg)
+	return NewProvider(raw)
 }
 
 // messagesRequest is the request body for POST /v1/messages. Only the fields the
@@ -275,6 +286,7 @@ type modelsListResponse struct {
 // any other mode is ErrNoListing and a missing key ErrAPIKeyMissing, both
 // without touching the network. One page of up to 1000 models.
 func ListModels(ctx context.Context, cfg project.LLMConfig) ([]models.Entry, error) {
+	raw := cfg
 	cfg = cfg.WithDefaults()
 	if mode := ResolveMode(cfg.Mode); mode == ModeDelegation || mode == ModeClaudeCLI || mode == ModeCodexCLI || mode == ModeGeminiCLI {
 		return nil, fmt.Errorf("%w (mode %s)", ErrNoListing, mode)
@@ -282,12 +294,12 @@ func ListModels(ctx context.Context, cfg project.LLMConfig) ([]models.Entry, err
 	if cfg.Provider != providerAnthropic {
 		return nil, fmt.Errorf("%w (provider %q)", ErrNoListing, cfg.Provider)
 	}
-	key, _, err := project.ResolveAPIKey(cfg.KeyEnv)
+	key, _, _, err := raw.ResolveKey()
 	if err != nil {
 		return nil, err
 	}
 	if key == "" {
-		return nil, fmt.Errorf("%w: set the %s environment variable or save the key in Settings", ErrAPIKeyMissing, cfg.KeyEnv)
+		return nil, fmt.Errorf("%w: set the %s environment variable or save the key in Settings", ErrAPIKeyMissing, raw.KeyVar())
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.BaseURL+"/v1/models?limit=1000", nil)
 	if err != nil {
