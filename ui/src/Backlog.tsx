@@ -3,7 +3,6 @@ import { fetchState, type Feature } from './api'
 import Tag from './Tag'
 import BacklogChat from './BacklogChat'
 import ConversationList from './ConversationList'
-import IdeasPanel from './IdeasPanel'
 import { useBacklogChats } from './useBacklogChats'
 import { sortByPriority } from './priority'
 import { useLiveVersion } from './live'
@@ -24,7 +23,6 @@ export default function Backlog() {
   const [openClarifications, setOpenClarifications] = useState<Record<string, number>>({})
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [modules, setModules] = useState<string[]>([])
   const version = useLiveVersion()
   const { t } = useT()
   const chats = useBacklogChats()
@@ -34,7 +32,6 @@ export default function Backlog() {
       .then((s) => {
         setFeatures(s.features.filter((f) => f.state === 'candidate'))
         setOpenClarifications(s.open_clarifications ?? {})
-        setModules(s.project.modules ?? [])
         setError(null)
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
@@ -43,18 +40,15 @@ export default function Backlog() {
   return (
     <main className="kanban backlog-layout">
       <div className="backlog-list-col">
-        <header className="kanban-header">
+        <header className="backlog-head">
           <h1>{t.nav.backlog}</h1>
-          {features && <p className="counts">{t.backlog.count(features.length)}</p>}
+          {features && <p className="backlog-count">{t.backlog.count(features.length)}</p>}
         </header>
-        {/* F-0312: ideias são matéria-prima, separadas das candidatas; a
-            captura fica no topo, alcançável sem rolar o backlog (C10). */}
-        <IdeasPanel modules={modules} onPromoted={() => setRefreshKey((k) => k + 1)} />
-        {error && <p className="status error">{t.backlog.loadError(error)}</p>}
-        {!error && !features && <p className="status">{t.common.loading}</p>}
-        {features && features.length === 0 && <p className="status">{t.backlog.empty}</p>}
+        {error && <p className="backlog-note backlog-note-error">{t.backlog.loadError(error)}</p>}
+        {!error && !features && <p className="backlog-note">{t.common.loading}</p>}
+        {features && features.length === 0 && <p className="backlog-note">{t.backlog.empty}</p>}
         {features && features.length > 0 && (
-          <div className="epic-lane-cards">
+          <div className="backlog-roster">
             {sortByPriority(features).map((f) => (
               <BacklogCard
                 key={f.id}
@@ -105,33 +99,33 @@ function BacklogCard({
     (feature.facets?.length ?? 0) > 0 || (feature.components?.length ?? 0) > 0
   return (
     <div className="backlog-card">
-    <a className="card card-candidate" href={`#/f/${feature.id}`}>
-      <span className="card-meta">
-        <span className="card-id">{feature.id}</span>
-        {pending > 0 && (
-          <span className="badge badge-clarify" title={t.kanban.pendingClarifyTitle(pending)}>
-            {t.kanban.pendingClarify(pending)}
+      <a className="card card-candidate" href={`#/f/${feature.id}`}>
+        <span className="card-meta">
+          <span className="card-id">{feature.id}</span>
+          {pending > 0 && (
+            <span className="badge badge-clarify" title={t.kanban.pendingClarifyTitle(pending)}>
+              {t.kanban.pendingClarify(pending)}
+            </span>
+          )}
+          {feature.module && <span className="badge">{feature.module}</span>}
+          {feature.priority && <span className="badge badge-priority">{feature.priority}</span>}
+        </span>
+        <span className="card-title">{feature.title}</span>
+        {feature.owner && <span className="card-owner">@{feature.owner}</span>}
+        {hasTags && (
+          <span className="note-tags">
+            {feature.facets?.map((f) => (
+              <Tag key={`f-${f}`} axis="facet" value={f} />
+            ))}
+            {feature.components?.map((c) => (
+              <Tag key={`c-${c}`} axis="component" value={c} />
+            ))}
           </span>
         )}
-        {feature.module && <span className="badge">{feature.module}</span>}
-        {feature.priority && <span className="badge badge-priority">{feature.priority}</span>}
-      </span>
-      <span className="card-title">{feature.title}</span>
-      {feature.owner && <span className="card-owner">@{feature.owner}</span>}
-      {hasTags && (
-        <span className="note-tags">
-          {feature.facets?.map((f) => (
-            <Tag key={`f-${f}`} axis="facet" value={f} />
-          ))}
-          {feature.components?.map((c) => (
-            <Tag key={`c-${c}`} axis="component" value={c} />
-          ))}
-        </span>
-      )}
-    </a>
-    <button type="button" className="backlog-card-refine" onClick={onRefine}>
-      {t.backlog.refineInChat}
-    </button>
+      </a>
+      <button type="button" className="backlog-card-refine" onClick={onRefine}>
+        {t.backlog.refineInChat}
+      </button>
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import '@testing-library/jest-dom/vitest'
 import Backlog from './Backlog'
 import { readChats, writeChats, type Conversation } from './useBacklogChats'
-import type { ChatAnswer, ChatOverride, ChatTitle, CreateOutcome, Feature, Idea, LLMOptions, StateResponse } from './api'
+import type { ChatAnswer, ChatOverride, ChatTitle, CreateOutcome, Feature, LLMOptions, StateResponse } from './api'
 
 const feature = (id: string, extra: Partial<Feature> = {}): Feature => ({
   id,
@@ -25,7 +25,6 @@ const state = (features: Feature[]): StateResponse => ({
 })
 
 let payload: StateResponse = state([])
-let ideasPayload: Idea[] = []
 const streamChat = vi.fn<(messages: unknown, override: ChatOverride | undefined, onDelta: (d: string) => void) => Promise<ChatAnswer>>()
 const registerChatCandidate = vi.fn<
   (
@@ -45,7 +44,6 @@ const summarizeChatTitle = vi.fn<() => Promise<ChatTitle>>()
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api')>()),
   fetchState: vi.fn(async () => payload),
-  fetchIdeas: vi.fn(async () => ideasPayload),
   streamChat: (messages: unknown, override: ChatOverride | undefined, onDelta: (d: string) => void) => streamChat(messages, override, onDelta),
   registerChatCandidate: (
     title: string,
@@ -64,7 +62,6 @@ beforeEach(() => {
   cleanup()
   localStorage.clear()
   payload = state([])
-  ideasPayload = []
   streamChat.mockReset()
   registerChatCandidate.mockReset()
   fetchLLMOptions.mockReset()
@@ -74,23 +71,14 @@ beforeEach(() => {
 })
 
 describe('Backlog (F-0202)', () => {
-  it('painel de ideias separado das candidatas (F-0312)', async () => {
+  it('não mostra ideias — a página de ideias é a superfície delas', async () => {
     payload = state([feature('F-0001'), feature('F-0002')])
-    const at = '2026-11-06T10:00:00Z'
-    ideasPayload = [
-      { id: 'I-0002', title: 'ideia dois', state: 'active', created_at: at, updated_at: at },
-      { id: 'I-0001', title: 'ideia um', state: 'active', created_at: at, updated_at: at },
-    ]
     const { container } = render(<Backlog />)
-    expect(await screen.findByText('ideia um')).toBeInTheDocument()
-    expect(screen.getByText('2 candidata(s)')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Ideias' })).toBeInTheDocument()
-    const cards = container.querySelectorAll('.card-candidate')
-    expect(cards).toHaveLength(2)
-    cards.forEach((c) => expect(c.textContent).not.toMatch(/I-|ideia/))
-    // C10: the capture is reachable without scrolling past the candidates.
-    const capture = screen.getByRole('textbox', { name: 'Nova ideia' })
-    expect(capture.compareDocumentPosition(cards[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(await screen.findByText('2 candidata(s)')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Ideias' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Nova ideia' })).not.toBeInTheDocument()
+    expect(container.textContent ?? '').not.toMatch(/\bI-\d+/)
+    expect(container.querySelectorAll('.card-candidate')).toHaveLength(2)
   })
 
   it('mostra o badge de esclarecimentos pendentes na candidata (F-0195)', async () => {
