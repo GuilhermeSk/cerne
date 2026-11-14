@@ -390,10 +390,9 @@ export default function AISettings({
                             <span id={`${uid}-nf-${c.name}`} className="sr-only">
                               {ai.notFoundReason(INSTALL[c.name])}
                             </span>
-                            <span className="settings-hint">
-                              {ai.cliInstall} {ai.cliLogin[c.name]}
-                            </span>
+                            <span className="settings-hint">{ai.cliInstall}</span>
                             <FixBlock command={INSTALL[c.name]} label={ai.copyInstall(name)} />
+                            <span className="settings-hint">{ai.cliLogin[c.name]}</span>
                           </div>
                         )}
                         {result(row)}
