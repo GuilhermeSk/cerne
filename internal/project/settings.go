@@ -147,7 +147,7 @@ var settingsRegistry = []Setting{
 		Description: "Days an active decision may go unreviewed, cited only by rejected or superseded features and by nothing live, before lint flags it as stale-decision. In .cernerc, [lint] stale_decision_days wins over a top-level stale_decision_days.",
 	},
 	{
-		ID: "llm.base_url", Group: "ai", Title: "API base URL", Type: "string", Default: "", MaxLen: 200,
+		ID: "llm.base_url", Group: "ai", Title: "API base URL", Type: "string", Default: "", MaxLen: 256,
 		Scopes:      []string{ScopeProject, ScopeHost},
 		Description: "The API endpoint for the OpenAI-compatible providers, for example a local Ollama (http://localhost:11434/v1). Required for the compatible provider; empty uses the provider's own address.",
 	},
@@ -164,7 +164,7 @@ var settingsRegistry = []Setting{
 		Description: "How cerne reaches a model for ask, compile and the chat. A subscription CLI (claude-cli, codex-cli, gemini-cli) uses the plan you already pay for; byo-key calls a provider's API with a key; delegation hands the prompt to the agent already running. Unset, it follows the subscription CLI found on PATH.",
 	},
 	{
-		ID: "llm.model", Group: "ai", Title: "Model", Type: "string", Default: "",
+		ID: "llm.model", Group: "ai", Title: "Model", Type: "string", Default: "", MaxLen: 256,
 		Scopes:      []string{ScopeProject, ScopeHost},
 		Description: "The model id sent to the CLI or the API. Empty uses the CLI's own default, or the catalog default for the anthropic provider.",
 	},

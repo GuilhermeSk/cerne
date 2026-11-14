@@ -43,6 +43,10 @@ func TestLLMSettingsDeclared(t *testing.T) {
 			t.Errorf("%s: group=%q scopes=%v enum=%v", id, s.Group, s.Scopes, s.Enum)
 		}
 	}
+	// A gguf path or accounts/fireworks/models/... id outgrows the 64-char default.
+	if err := SetSetting(dir, "llm.model", ScopeHost, "accounts/fireworks/models/"+strings.Repeat("m", 150)); err != nil {
+		t.Errorf("a long model id must be accepted: %v", err)
+	}
 	long := "https://example.com/" + strings.Repeat("a", 120)
 	if err := SetSetting(dir, "llm.base_url", ScopeHost, long); err != nil {
 		t.Errorf("a long base_url must be accepted: %v", err)
