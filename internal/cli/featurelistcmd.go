@@ -38,7 +38,7 @@ var featureStateOrder = []domain.FeatureState{
 }
 
 func newFeatureListCmd(dir *string) *cobra.Command {
-	var state, module, parent, facet, component, owner, sort string
+	var state, module, parent, facet, component, owner, sort, origin string
 	var all, asJSON bool
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -70,6 +70,7 @@ func newFeatureListCmd(dir *string) *cobra.Command {
 	cmd.Flags().StringVar(&facet, "facet", "", "filter by facet (e.g. infra)")
 	cmd.Flags().StringVar(&component, "component", "", "filter by component (e.g. gitback)")
 	cmd.Flags().StringVar(&owner, "owner", "", "filter by owner (e.g. ana, F-0204)")
+	cmd.Flags().StringVar(&origin, "origin", "", "filter by who asked for it: human|agent (T-0005)")
 	cmd.Flags().StringVar(&sort, "sort", "", "sort order: priority (p0..p3 first, unset last, F-0204)")
 	cmd.Flags().BoolVar(&all, "all", false, "include superseded/rejected features (history)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "machine-readable JSON output")
@@ -98,6 +99,10 @@ func runFeatureList(cmd *cobra.Command, dir, state, module, parent, facet, compo
 	facetQ := strings.ToLower(strings.TrimSpace(facet))
 	compQ := slug.Make(component)
 	ownerQ := strings.ToLower(strings.TrimSpace(owner))
+	originQ, _ := cmd.Flags().GetString("origin")
+	if originQ = strings.ToLower(strings.TrimSpace(originQ)); originQ != "" && originQ != "human" && originQ != "agent" {
+		return fmt.Errorf("invalid --origin: %q (valid: human, agent)", originQ)
+	}
 
 	ctx, err := resolveProject(dir)
 	if err != nil {
@@ -140,6 +145,9 @@ func runFeatureList(cmd *cobra.Command, dir, state, module, parent, facet, compo
 		if ownerQ != "" && strings.ToLower(f.Owner) != ownerQ {
 			continue
 		}
+		if originQ != "" && f.Origin != originQ {
+			continue
+		}
 		shown = append(shown, f)
 	}
 
@@ -159,7 +167,7 @@ func runFeatureList(cmd *cobra.Command, dir, state, module, parent, facet, compo
 	}
 
 	if len(shown) == 0 {
-		noFilter := state == "" && module == "" && parent == "" && facet == "" && component == "" && owner == "" && !all
+		noFilter := state == "" && module == "" && parent == "" && facet == "" && component == "" && owner == "" && originQ == "" && !all
 		if noFilter && len(features) == 0 {
 			fmt.Fprintln(w, "No features yet. Create the first one with 'cerne feature new'.")
 		} else {

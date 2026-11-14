@@ -51,6 +51,10 @@ var ErrFixesCycle = errors.New("a feature cannot fix itself or the feature that 
 // (superseded/rejected): new work is not filed under a dead epic.
 var ErrParentTerminal = errors.New("the parent feature (epic) is closed")
 
+// ErrOnBehalfEmpty refuses a blank --on-behalf quote (T-0005): the claim that a
+// human asked is only auditable with their words.
+var ErrOnBehalfEmpty = errors.New("--on-behalf needs the human's words, not a blank quote")
+
 // ErrParentRequired is returned when creating a task without a parent: a task
 // is an execution unit of a PRD, never free-floating (F-0203).
 var ErrParentRequired = errors.New("a task requires --parent (the F-/E- it decomposes)")
@@ -141,39 +145,39 @@ func CreateFeature(repoDir, projDir, title, module, parent string, facets, compo
 // duplicate-registration guard (F-0147) for a consciously distinct problem —
 // the exact-title guard (F-0121) is never bypassed.
 func CreateFeatureWithSpec(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority string) (store.Feature, error) {
-	return createFeatureCore(repoDir, projDir, "F", title, module, parent, facets, components, specBody, force, owner, priority, "", DocAuthor{})
+	return createFeatureCore(repoDir, projDir, "F", title, module, parent, facets, components, specBody, force, owner, priority, "", DocAuthor{}, "")
 }
 
 // CreateFeatureWithSpecBy is the chat's CreateFeatureWithSpec (F-0375): the
 // spec's writer is the [llm] config the chat called, named by the caller.
 func CreateFeatureWithSpecBy(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, by DocAuthor) (store.Feature, error) {
-	return createFeatureCore(repoDir, projDir, "F", title, module, parent, facets, components, specBody, false, "", "", "", by)
+	return createFeatureCore(repoDir, projDir, "F", title, module, parent, facets, components, specBody, false, "", "", "", by, "")
 }
 
 // CreateFeatureFixes is CreateFeatureWithSpec with the correction link (F-0321):
 // fixes names the delivered feature whose defect this one corrects, validated to
 // exist before anything is written (ErrFixesNotFound, wrapped).
-func CreateFeatureFixes(repoDir, projDir, title, module, parent, fixes string, facets, components []string, specBody string, force bool, owner, priority string) (store.Feature, error) {
-	return createFeatureCore(repoDir, projDir, "F", title, module, parent, facets, components, specBody, force, owner, priority, strings.TrimSpace(fixes), DocAuthor{})
+func CreateFeatureFixes(repoDir, projDir, title, module, parent, fixes string, facets, components []string, specBody string, force bool, owner, priority, onBehalf string) (store.Feature, error) {
+	return createFeatureCore(repoDir, projDir, "F", title, module, parent, facets, components, specBody, force, owner, priority, strings.TrimSpace(fixes), DocAuthor{}, onBehalf)
 }
 
 // CreateEpicWithSpec creates a declared epic (E-, F-0203): a full feature
 // lifecycle under its own id sequence — a semantic signal at birth for a PRD
 // that is known to decompose. Epic behavior itself stays structural (children),
 // never derived from the prefix.
-func CreateEpicWithSpec(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority string) (store.Feature, error) {
-	return createFeatureCore(repoDir, projDir, "E", title, module, parent, facets, components, specBody, force, owner, priority, "", DocAuthor{})
+func CreateEpicWithSpec(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority, onBehalf string) (store.Feature, error) {
+	return createFeatureCore(repoDir, projDir, "E", title, module, parent, facets, components, specBody, force, owner, priority, "", DocAuthor{}, onBehalf)
 }
 
 // CreateTaskWithSpec creates a task (T-, F-0203): an execution unit of a
 // committed PRD, born approved — the human gate was paid on the parent. The
 // parent is mandatory and must be past candidacy; every refusal happens before
 // anything is written.
-func CreateTaskWithSpec(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority string) (store.Feature, error) {
+func CreateTaskWithSpec(repoDir, projDir, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority, onBehalf string) (store.Feature, error) {
 	if strings.TrimSpace(parent) == "" {
 		return store.Feature{}, ErrParentRequired
 	}
-	return createFeatureCore(repoDir, projDir, "T", title, module, parent, facets, components, specBody, force, owner, priority, "", DocAuthor{})
+	return createFeatureCore(repoDir, projDir, "T", title, module, parent, facets, components, specBody, force, owner, priority, "", DocAuthor{}, onBehalf)
 }
 
 // createFeatureCore is the shared creation flow behind F-/E-/T- (F-0203). The
@@ -181,10 +185,13 @@ func CreateTaskWithSpec(repoDir, projDir, title, module, parent string, facets, 
 // committed-parent required. Everything else — guards, stub, event, sync — is
 // identical across the three. A spec body is recorded as written by by — the
 // zero DocAuthor resolves this process's (F-0375); cerne's stub by nobody.
-func createFeatureCore(repoDir, projDir, prefix, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority, fixes string, by DocAuthor) (store.Feature, error) {
+func createFeatureCore(repoDir, projDir, prefix, title, module, parent string, facets, components []string, specBody string, force bool, owner, priority, fixes string, by DocAuthor, onBehalf string) (store.Feature, error) {
 	n, err := prepareFeature(prefix, title, module, parent, facets, components, specBody, force, owner, priority)
 	n.fixes = fixes
 	if err != nil {
+		return store.Feature{}, err
+	}
+	if n.origin, n.onBehalf, err = resolveOrigin(onBehalf); err != nil {
 		return store.Feature{}, err
 	}
 	if strings.TrimSpace(specBody) != "" {
@@ -219,6 +226,7 @@ type newFeature struct {
 	force                                                    bool
 	fromIdea                                                 string    // F-0312: the idea a promote mints it from
 	fixes                                                    string    // F-0321: the feature this one corrects
+	origin, onBehalf                                         string    // T-0005: who asked for it, and the quote when an agent relays a human
 	light                                                    bool      // F-0364: light mode — scaffold without the bar guide
 	author                                                   DocAuthor // F-0375: the spec body's writer; zero for a stub
 }
@@ -304,6 +312,7 @@ func (n newFeature) mint(repoDir string) (store.Feature, string, error) {
 			Owner:      n.owner,
 			Priority:   n.priority,
 			FromIdea:   n.fromIdea,
+			Origin:     n.origin,
 			CreatedAt:  now,
 			UpdatedAt:  now,
 		}
@@ -339,6 +348,9 @@ func (n newFeature) mint(repoDir string) (store.Feature, string, error) {
 		}
 		if fixes != "" {
 			payload["fixes"] = fixes
+		}
+		if n.onBehalf != "" {
+			payload["on_behalf"] = n.onBehalf
 		}
 		if forced {
 			// The guard saw live similars and --force overrode it (F-0147) —
@@ -1226,4 +1238,20 @@ func writeEpicResultStub(repoDir, id, title string, children []store.Feature) er
 	roster.WriteString("-->\n\n")
 	content := "---\ncerne_id: " + id + "\n---\n\n" + roster.String() + restmpl.StubIn(store.DocsLanguage(repoDir), title)
 	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+// resolveOrigin is the one origin rule for every creation path (T-0005): an
+// agent session without --on-behalf asked for it itself ("agent"); anything
+// else — a human at the terminal, or an agent relaying a quoted human request —
+// is "human". A blank quote is refused before any write. Fail-open like F-0131:
+// the quote is auditable, not authenticated.
+func resolveOrigin(onBehalf string) (origin, quote string, err error) {
+	quote = strings.TrimSpace(onBehalf)
+	if onBehalf != "" && quote == "" {
+		return "", "", ErrOnBehalfEmpty
+	}
+	if quote == "" && isAgentActor(os.Getenv("CERNE_ACTOR")) {
+		return "agent", "", nil
+	}
+	return "human", quote, nil
 }
