@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -66,7 +67,8 @@ func TestNoteGoldenPath(t *testing.T) {
 	// cited among them.
 	mustCerne(t, "pull", "--dir", proj)
 	answer := mustCerne(t, "ask", "como o go-git lida com ssh config?", "--dir", proj)
-	if !strings.Contains(answer, "N-0001 (note, active)") {
+	// The source header carries the note's title since B-0004: "N-0001 — <title> (note, active)".
+	if !regexp.MustCompile(`N-0001( — [^\n(]+)? \(note, active\)`).MatchString(answer) {
 		t.Fatalf("ask did not cite the active note N-0001 from the index:\n%s", answer)
 	}
 
