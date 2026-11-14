@@ -20,7 +20,7 @@ import (
 // failOpenCmd wraps a cerne hook invocation in the standard fail-open shell:
 // a missing binary or a crashing hook must never break the host session.
 func failOpenCmd(invocation string) string {
-	return "sh -c 'command -v cerne >/dev/null 2>&1 || exit 0; " + invocation + " 2>/dev/null || true'"
+	return "sh -c 'command -v cerne >/dev/null 2>&1 || PATH=\"$PATH:$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin\"; command -v cerne >/dev/null 2>&1 || exit 0; " + invocation + " 2>/dev/null || true'"
 }
 
 // commandEntry is the {type, command} leaf shared by the Claude-style hook
