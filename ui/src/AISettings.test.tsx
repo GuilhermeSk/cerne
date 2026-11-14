@@ -62,11 +62,12 @@ const cfg = (over: Partial<LLMConfig> = {}): LLMConfig => ({
   ...over,
 })
 
+const onScope = vi.fn()
 function mount(settings = noStored, scope: SettingScope = 'project') {
   const onWritten = vi.fn()
   render(
     <I18nProvider>
-      <AISettings settings={settings} scope={scope} onWritten={onWritten} />
+      <AISettings settings={settings} scope={scope} onWritten={onWritten} onScope={onScope} />
     </I18nProvider>,
   )
   return onWritten
@@ -91,16 +92,16 @@ describe('AISettings (F-0414)', () => {
   it('critério 1: sem valor gravado, diz que a CLI foi detectada no PATH', async () => {
     mount()
     const line = await screen.findByText(/Em uso:/)
-    expect(line.parentElement).toHaveTextContent('Assinatura — Claude Code')
-    expect(line.parentElement).toHaveTextContent('detectado no PATH')
+    expect(line.closest('div')).toHaveTextContent('Assinatura — Claude Code')
+    expect(line.closest('div')).toHaveTextContent('detectado no PATH')
   })
 
   it('critério 1: valor gravado diz em que escopo foi configurado', async () => {
     fetchLLMConfig.mockResolvedValue(cfg({ source: 'configured', mode: 'gemini-cli' }))
     mount([reg('llm.mode', { stored: { host: 'gemini-cli' } }), ...noStored.slice(1)])
     const line = await screen.findByText(/Em uso:/)
-    expect(line.parentElement).toHaveTextContent('Gemini CLI')
-    expect(line.parentElement).toHaveTextContent('configurado no Host')
+    expect(line.closest('div')).toHaveTextContent('Gemini CLI')
+    expect(line.closest('div')).toHaveTextContent('modo definido no Host')
   })
 
   it('critério 2: os quatro caminhos são um grupo de rádio rotulado e a Assinatura lista as três CLIs', async () => {
@@ -134,7 +135,7 @@ describe('AISettings (F-0414)', () => {
     await screen.findByText(/Em uso:/)
     pick('Delegação')
     expect(screen.getAllByText(/O agente da sessão em curso responde/).length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('button', { name: 'Usar Delegação' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Usar delegação' }))
     await waitFor(() => expect(putSetting).toHaveBeenCalledWith('llm.mode', 'project', 'delegation'))
   })
 
@@ -162,7 +163,7 @@ describe('AISettings (F-0414)', () => {
     const model = screen.getByRole('combobox', { name: 'Modelo' })
     expect(within(model).getAllByRole('option').map((o) => o.textContent)).toEqual(['Padrão do catálogo', 'Opus 4.8'])
     fireEvent.change(model, { target: { value: 'claude-opus-4-8' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Usar Chave de API' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Usar chave de API' }))
     await waitFor(() => expect(putSetting).toHaveBeenCalledWith('llm.model', 'project', 'claude-opus-4-8'))
     expect(putSetting).toHaveBeenCalledWith('llm.mode', 'project', 'byo-key')
     expect(putSetting).toHaveBeenCalledWith('llm.provider', 'project', 'anthropic')
@@ -177,7 +178,7 @@ describe('AISettings (F-0414)', () => {
     fireEvent.change(screen.getByLabelText('Chave', { selector: 'input' }), { target: { value: 'sk-typed-0000' } })
     const model = screen.getByRole('textbox', { name: 'Modelo' })
     fireEvent.change(model, { target: { value: 'gpt-5' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Usar Chave de API' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Usar chave de API' }))
     await waitFor(() => expect(putSetting).toHaveBeenCalledWith('llm.model', 'project', 'gpt-5'))
     expect(putSetting).toHaveBeenCalledWith('llm.provider', 'project', 'openai')
     // item 7: Usar also saves the typed key.
@@ -190,7 +191,7 @@ describe('AISettings (F-0414)', () => {
     pick('Gateway ou compatível')
     fireEvent.change(screen.getByRole('combobox', { name: 'Gateway' }), { target: { value: 'compatible' } })
     expect(screen.getByRole('textbox', { name: 'URL base' })).toHaveValue('http://localhost:11434/v1')
-    fireEvent.click(screen.getByRole('button', { name: 'Usar Gateway ou compatível' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Usar gateway ou compatível' }))
     await waitFor(() => expect(putSetting).toHaveBeenCalledWith('llm.base_url', 'host', 'http://localhost:11434/v1'))
     expect(putSetting).toHaveBeenCalledWith('llm.provider', 'host', 'compatible')
     expect(putSetting).toHaveBeenCalledWith('llm.mode', 'host', 'byo-key')
@@ -293,9 +294,9 @@ describe('AISettings (F-0414)', () => {
     mount()
     await screen.findByText(/Em uso:/)
     pick('Chave de API')
-    const use = screen.getByRole('button', { name: 'Usar Chave de API' })
+    const use = screen.getByRole('button', { name: 'Usar chave de API' })
     expect(use).toHaveAttribute('aria-disabled', 'true')
-    expect(use).toHaveAccessibleDescription(/Digite uma chave/)
+    expect(use).toHaveAccessibleDescription(/Digite uma chave, ou defina ANTHROPIC_API_KEY/)
     fireEvent.click(use)
     expect(putSetting).not.toHaveBeenCalled()
   })
@@ -306,14 +307,9 @@ describe('AISettings (F-0414)', () => {
     pick('Gateway ou compatível')
     fireEvent.change(screen.getByRole('combobox', { name: 'Gateway' }), { target: { value: 'compatible' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'URL base' }), { target: { value: '' } })
-    const use = screen.getByRole('button', { name: 'Usar Gateway ou compatível' })
+    const use = screen.getByRole('button', { name: 'Usar gateway ou compatível' })
     expect(use).toHaveAttribute('aria-disabled', 'true')
     expect(use).toHaveAccessibleDescription(/URL base/)
-  })
-
-  it('item 8: com Host selecionado e llm.* gravado no Projeto, avisa que o Projeto sobrepõe', async () => {
-    mount([reg('llm.mode', { stored: { project: 'delegation' } }), ...noStored.slice(1)], 'host')
-    expect(await screen.findByText('O Projeto sobrepõe o Host: isto não vale aqui.')).toBeInTheDocument()
   })
 
   it('item 8: o Host explica por que a assinatura é pessoal; não há nota duplicada do escopo', async () => {
@@ -353,5 +349,112 @@ describe('AISettings (F-0414)', () => {
     const onWritten = mount()
     fireEvent.click(await screen.findByRole('button', { name: 'Usar Gemini CLI' }))
     await waitFor(() => expect(onWritten).toHaveBeenCalledWith(view))
+  })
+
+  // ---- round 3 ----
+  const projectStored = [reg('llm.mode', { stored: { project: 'claude-cli' } }), ...noStored.slice(1)]
+
+  it('P1.1: no Host, o .cernerc que define llm.mode aparece com o valor e leva ao Projeto num clique', async () => {
+    mount(projectStored, 'host')
+    const note = await screen.findByText('O .cernerc deste projeto define llm.mode = claude-cli, que vence o Host.')
+    expect(note.compareDocumentPosition(screen.getByText(/assinatura é pessoal/i)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Ir para Projeto' }))
+    expect(onScope).toHaveBeenCalledWith('project')
+  })
+
+  it('P1.1: sem valor no Projeto, não há aviso de sobreposição', async () => {
+    mount(noStored, 'host')
+    await screen.findByText(/Em uso:/)
+    expect(screen.queryByRole('button', { name: 'Ir para Projeto' })).toBeNull()
+  })
+
+  it('P1.1: escrita no Host sobreposta diz "sem efeito aqui" na região viva da linha', async () => {
+    putSetting.mockResolvedValue({ settings: projectStored, files: {} })
+    mount(projectStored, 'host')
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar Gemini CLI' }))
+    const msg = await screen.findByText('Salvo no Host — sem efeito aqui: o Projeto define llm.mode.')
+    expect(msg.closest('li')).toHaveTextContent('Gemini CLI')
+    expect(msg.closest('[aria-live="polite"]')).not.toBeNull()
+  })
+
+  it('P1.1/P2.3: escrita no Host anuncia o que ficou em uso e leva o foco ao Testar da linha', async () => {
+    fetchLLMConfig.mockResolvedValueOnce(cfg()).mockResolvedValue(cfg({ mode: 'gemini-cli', source: 'configured' }))
+    mount(noStored, 'host')
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar Gemini CLI' }))
+    expect(await screen.findByText('Agora em uso: Assinatura — Gemini CLI · padrão do CLI (salvo no Host).')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Testar Gemini CLI' })).toHaveFocus())
+  })
+
+  it('P1.1: escrita no Projeto lembra de commitar o .cernerc', async () => {
+    mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'Usar Gemini CLI' }))
+    expect(await screen.findByText(/lembre de commitar/)).toBeInTheDocument()
+  })
+
+  it('P2.3: voltar à detecção automática anuncia e põe o foco no título, nunca no body', async () => {
+    mount([reg('llm.mode', { stored: { project: 'gemini-cli' } }), ...noStored.slice(1)])
+    fireEvent.click(await screen.findByRole('button', { name: 'Voltar à detecção automática' }))
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body))
+    expect(screen.getByText(/Agora em uso:.*detecção automática/)).toBeInTheDocument()
+  })
+
+  it('P1.2b: a CLI em uso diz "Ainda não testado" até um teste rodar nesta página', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    const row = screen.getByText('Claude Code').closest('li')!
+    expect(row).toHaveTextContent('Ainda não testado')
+    fireEvent.click(within(row).getByRole('button', { name: 'Testar Claude Code' }))
+    await within(row).findByText('Claude Code: conexão OK.')
+    expect(row).not.toHaveTextContent('Ainda não testado')
+  })
+
+  it('P1.2c / P2.7: CLI não encontrada traz instalação, login e o motivo do Usar desabilitado; cópia com nome próprio', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    const codex = screen.getByText('Codex CLI').closest('li')!
+    expect(codex).toHaveTextContent('codex login')
+    expect(within(codex).getByRole('button', { name: 'Copiar comando de instalação do Codex CLI' })).toBeInTheDocument()
+    expect(within(codex).getByRole('button', { name: 'Usar Codex CLI' })).toHaveAccessibleDescription(/não encontrado no PATH.*npm i -g @openai\/codex/)
+  })
+
+  it('P2.5: o selo "em uso" não entra no nome do rádio, só na descrição', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    const radio = screen.getByRole('radio', { name: 'Assinatura' })
+    expect(radio).toHaveAccessibleDescription(/em uso/)
+  })
+
+  it('P2.5: salvar a chave diz como trocar', async () => {
+    putLLMKey.mockResolvedValue({ env: 'X', set: true, source: 'file', last4: 'wxyz' })
+    mount()
+    await screen.findByText(/Em uso:/)
+    pick('Chave de API')
+    fireEvent.change(screen.getByLabelText('Chave', { selector: 'input' }), { target: { value: 'sk-typed-0000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar chave' }))
+    expect(await screen.findByText('Chave salva. Clique em Usar chave de API para trocar.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Testar Chave de API' })).toHaveFocus())
+  })
+
+  it('P2.6: ao voltar o foco para a janela, relê a config e a CLI instalada passa a "instalado"', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    expect(screen.getByText('Codex CLI').closest('li')).toHaveTextContent('não encontrado')
+    fetchLLMConfig.mockResolvedValue(
+      cfg({ clis: [
+        { name: 'claude', mode: 'claude-cli', found: true },
+        { name: 'codex', mode: 'codex-cli', found: true },
+        { name: 'gemini', mode: 'gemini-cli', found: true },
+      ] }),
+    )
+    fireEvent.focus(window)
+    await waitFor(() => expect(screen.getByText('Codex CLI').closest('li')).toHaveTextContent('instalado'))
+  })
+
+  it('P3.8/9/10: origem em linha própria, "seria Claude Code" e o equivalente no terminal', async () => {
+    mount([reg('llm.mode', { stored: { host: 'gemini-cli' } }), ...noStored.slice(1)], 'host')
+    const head = (await screen.findByText(/Em uso:/)).closest('div')!
+    expect(within(head).getByText('detectado no PATH').tagName).toBe('P')
+    expect(screen.getByText(/seria Claude Code/)).toBeInTheDocument()
+    expect(screen.getByText('cerne settings set llm.mode <valor> --scope host')).toBeInTheDocument()
   })
 })

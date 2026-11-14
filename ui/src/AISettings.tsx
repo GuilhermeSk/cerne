@@ -8,7 +8,6 @@ import {
   unsetSetting,
   type LLMConfig,
   type LLMKeyStatus,
-  type LLMMode,
   type LLMTestBody,
   type ResolvedSetting,
   type SettingScope,
@@ -35,6 +34,7 @@ const INSTALL: Record<string, string> = {
   codex: 'npm i -g @openai/codex',
   gemini: 'npm i -g @google/gemini-cli',
 }
+const KEY_ENV: Record<string, string> = { gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY' }
 const LOCAL_ENDPOINT = 'http://localhost:11434/v1'
 
 // The Settings page's group <h2>, which labels this region.
@@ -63,7 +63,7 @@ export function describeLLM(c: LLMConfig, ai: Texts): string {
 // A failed test, reduced to what a person acts on: one line of cause and, when
 // the server named one, the command that fixes it. The raw text stays behind
 // "Details". The server's error is "<what failed>: <stderr tail> — <fix>".
-function parseFailure(raw: string): { cause: string; fix?: string } {
+export function parseFailure(raw: string): { cause: string; fix?: string } {
   const timeout = /[\w][\w ().-]* timed out after \d+ seconds/.exec(raw)
   if (timeout) return { cause: timeout[0] }
   const cut = raw.lastIndexOf(' — ')
@@ -74,17 +74,38 @@ function parseFailure(raw: string): { cause: string; fix?: string } {
   return { cause: cause.length > 160 ? `${cause.slice(0, 160)}…` : cause, fix }
 }
 
-type Outcome = { row: string; state: 'testing' | 'ok' | 'fail'; name: string; error?: string }
+// FailureView is a failed call reduced to one line of cause, the fix command in
+// mono with its own copy button, and the raw text under "Details". The Ask
+// screen shows the same when an answer fails.
+export function FailureView({ lead, raw, fixLabel, details }: { lead: string; raw: string; fixLabel: string; details: string }) {
+  const f = parseFailure(raw)
+  return (
+    <>
+      <p className="form-error">
+        {lead} {f.cause}
+      </p>
+      {f.fix && <FixBlock command={f.fix} label={fixLabel} />}
+      <details>
+        <summary>{details}</summary>
+        <pre className="ai-raw">{raw}</pre>
+      </details>
+    </>
+  )
+}
+
+type Outcome = { row: string; state: 'testing' | 'ok' | 'fail' | 'saved'; name: string; error?: string; text?: string }
 
 export default function AISettings({
   settings,
   scope,
   onWritten,
+  onScope,
   children,
 }: {
   settings: ResolvedSetting[]
   scope: SettingScope
   onWritten: (view: SettingsView) => void
+  onScope: (to: SettingScope) => void
   // The Settings page's scope selector, shown right under the headline.
   children?: ReactNode
 }) {
@@ -102,12 +123,32 @@ export default function AISettings({
   const [busy, setBusy] = useState(false)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const [writeError, setWriteError] = useState<string | null>(null)
+  const [tested, setTested] = useState<ReadonlySet<string>>(new Set())
+  // Where the focus goes once the pressed control is gone or changed (an id).
+  const [focusTo, setFocusTo] = useState<string | null>(null)
 
   const load = () => {
     setLoadError(null)
     fetchLLMConfig().then(setCfg, (e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)))
   }
   useEffect(load, [])
+  // "Not found" must follow an install made meanwhile: re-read on return.
+  useEffect(() => {
+    const reread = () => {
+      if (document.visibilityState !== 'hidden') fetchLLMConfig().then(setCfg, () => {})
+    }
+    window.addEventListener('focus', reread)
+    document.addEventListener('visibilitychange', reread)
+    return () => {
+      window.removeEventListener('focus', reread)
+      document.removeEventListener('visibilitychange', reread)
+    }
+  }, [])
+  useEffect(() => {
+    if (focusTo === null) return
+    setFocusTo(null)
+    document.getElementById(focusTo)?.focus()
+  }, [focusTo])
 
   if (!cfg) {
     return loadError ? (
@@ -127,7 +168,12 @@ export default function AISettings({
     cfg.source === 'configured' ? (modeSetting?.project !== undefined ? ai.origin.project : ai.origin.host) : ai.origin[cfg.source]
   const active = pathOf(cfg)
   const sel = path ?? active
-  const projectWins = scope === 'host' && settings.some((s) => s.id.startsWith('llm.') && s.stored?.project !== undefined)
+  const scopeName = scope === 'host' ? 'Host' : '.cernerc'
+  // The first llm.* value Project stores: it wins over Host (F-0414).
+  const projectKey = (list: ResolvedSetting[]) =>
+    list.find((s) => s.id === 'llm.mode' && s.stored?.project !== undefined) ?? list.find((s) => s.id.startsWith('llm.') && s.stored?.project !== undefined)
+  const winner = scope === 'host' ? projectKey(settings) : undefined
+  const headId = `${uid}-head`
 
   // run is one panel action: busy-locked (aria-disabled, so the pressed button
   // keeps the focus), and a failure stays visible as an alert.
@@ -144,18 +190,29 @@ export default function AISettings({
       setBusy(false)
     }
   }
-  const write = (entries: [string, string | null][], before?: () => Promise<void>) =>
+  // write sets llm.* keys and says, in the row's live region, what is now in
+  // use and where it was saved — or that Project overrides it. The focus moves
+  // to a stable control: the pressed "Use" turns into a pill.
+  const write = (entries: [string, string | null][], row: string, focus: string, before?: () => Promise<void>, how?: string) =>
     run(async () => {
       await before?.()
       let view: SettingsView | null = null
       for (const [id, value] of entries) view = value === null ? await unsetSetting(id, scope) : await putSetting(id, scope, value)
       if (view) onWritten(view)
-      setCfg(await fetchLLMConfig())
+      const fresh = await fetchLLMConfig()
+      setCfg(fresh)
+      const over = scope === 'host' && view ? projectKey(view.settings) : undefined
+      const text = over
+        ? ai.overriddenSaved(over.id)
+        : ai.nowInUse(describeLLM(fresh, ai), how ?? (scope === 'host' ? ai.savedHost : ai.savedProject))
+      setOutcome({ row, state: 'saved', name: '', text })
+      setFocusTo(focus)
     })
   const test = (row: string, name: string, body: LLMTestBody) =>
     run(async () => {
       setOutcome({ row, state: 'testing', name })
       const r = await testLLM(body)
+      setTested((s) => new Set(s).add(row))
       setOutcome(r.ok ? { row, state: 'ok', name } : { row, state: 'fail', name, error: r.error ?? '' })
     })
 
@@ -169,9 +226,13 @@ export default function AISettings({
   const title = (p: PathId) => ai.paths[p].title
   const keyState = !key?.set ? ai.keyNone : key.source === 'env' ? ai.keyEnv(key.env) : key.last4 ? ai.keyLast4(key.last4) : ai.keySet
   const typed = keyInput.trim()
+  const keyEnv = key?.env ?? KEY_ENV[prov] ?? 'CERNE_LLM_API_KEY'
+  const testId = (row: string) => `${uid}-test-${row.replace(':', '-')}`
+  const wouldBe = cfg.clis.find((c) => c.found)
+  const wouldBeName = wouldBe ? (ai.clis[wouldBe.name] ?? wouldBe.name) : ai.paths.delegation.title
 
   // Why "Use" is unavailable on the API / gateway forms, said in text.
-  const reason = prov === 'compatible' ? (baseValue.trim() === '' ? ai.needBaseUrl : '') : !key?.set && typed === '' ? ai.needKey : ''
+  const reason = prov === 'compatible' ? (baseValue.trim() === '' ? ai.needBaseUrl : '') : !key?.set && typed === '' ? ai.needKey(keyEnv) : ''
   const dirty =
     prov !== cfg.provider || modelValue !== cfg.model || (prov === 'compatible' && baseValue !== cfg.base_url) || typed !== ''
   const formBody = (): LLMTestBody => ({
@@ -181,13 +242,15 @@ export default function AISettings({
     ...(typed ? { key: typed } : {}),
   })
 
-  const saveKey = () =>
+  const saveKey = (p: PathId) =>
     run(async () => {
       setKeys({ ...keys, [prov]: await putLLMKey(prov, typed) })
       setKeyInput('')
+      setOutcome({ row: p, state: 'saved', name: '', text: p === active ? ai.saved : ai.keySavedUse(ai.paths[p].use) })
+      setFocusTo(testId(p))
     })
   const removeKey = () => run(async () => setKeys({ ...keys, [prov]: await deleteLLMKey(prov) }))
-  const useForm = () =>
+  const useForm = (p: PathId) =>
     write(
       [
         ['llm.mode', 'byo-key'],
@@ -195,6 +258,8 @@ export default function AISettings({
         ['llm.model', modelValue.trim() || null],
         ['llm.base_url', prov === 'compatible' ? baseValue.trim() || null : null],
       ],
+      p,
+      testId(p),
       typed
         ? async () => {
             setKeys({ ...keys, [prov]: await putLLMKey(prov, typed) })
@@ -203,48 +268,52 @@ export default function AISettings({
         : undefined,
     )
 
-  // The outcome of a test, inside the row that was tested; the live region is
-  // always mounted so the screen reader hears the change.
+  // The outcome of a test or a write, inside the row it belongs to; the live
+  // region is always mounted so the screen reader hears the change.
   const result = (row: string) => {
     const o = outcome?.row === row ? outcome : null
-    const f = o?.state === 'fail' ? parseFailure(o.error ?? '') : null
     return (
       <div className="ai-result" aria-live="polite">
         {o?.state === 'testing' && <p>{ai.testing}</p>}
         {o?.state === 'ok' && <p className="ai-ok">{ai.testOk(o.name)}</p>}
-        {o && f && (
-          <>
-            <p className="form-error">
-              {ai.testFail(o.name)} {f.cause}
-            </p>
-            {f.fix && <FixBlock command={f.fix} />}
-            <details>
-              <summary>{ai.details}</summary>
-              <pre className="ai-raw">{o.error}</pre>
-            </details>
-          </>
-        )}
+        {o?.state === 'saved' && <p className="ai-ok">{o.text}</p>}
+        {o?.state === 'fail' && <FailureView lead={ai.testFail(o.name)} raw={o.error ?? ''} fixLabel={ai.copyFix} details={ai.details} />}
       </div>
     )
   }
   const lockedAttr = busy || undefined
-  const pill = <span className="badge ai-pill">{ai.inUsePill}</span>
+  const pill = (
+    <span className="badge ai-pill" aria-hidden="true">
+      {ai.inUsePill}
+    </span>
+  )
 
   return (
     <section className="ai-panel" aria-labelledby={groupTitleId}>
-      <p className="ai-headline">
-        <span className="ai-inuse-label">{ai.inUse}</span> <strong>{describeLLM(cfg, ai)}</strong>{' '}
-        <span className="ai-origin">{originText}</span>
-      </p>
-      {children}
-      <p className="settings-hint">{scope === 'host' ? ai.scopeHintHost : ai.scopeHintProject}</p>
-      {projectWins && <p className="settings-hint ai-override">{ai.projectOverrides}</p>}
-      {modeSetting?.[scope] !== undefined && (
-        <p className="settings-hint">
-          <button type="button" className="settings-switch" aria-disabled={lockedAttr} onClick={busy ? undefined : () => write([['llm.mode', null]])}>
-            {ai.autoDetect}
+      <div className="ai-head" id={headId} tabIndex={-1}>
+        <p className="ai-headline">
+          <span className="ai-inuse-label">{ai.inUse}</span> <strong>{describeLLM(cfg, ai)}</strong>
+        </p>
+        <p className="ai-origin">{originText}</p>
+      </div>
+      {winner && (
+        <p className="ai-override" role="status">
+          <span>{ai.projectDefines(winner.id, String(winner.stored?.project))}</span>{' '}
+          <button type="button" className="settings-switch" onClick={() => onScope('project')}>
+            {ai.toProject}
           </button>
         </p>
+      )}
+      {children}
+      <p className="settings-hint">{scope === 'host' ? ai.scopeHintHost : ai.scopeHintProject}</p>
+      {modeSetting?.[scope] !== undefined && (
+        <div className="ai-auto">
+          <button type="button" className="settings-switch" aria-disabled={lockedAttr} onClick={busy ? undefined : () => write([['llm.mode', null]], 'auto', headId, undefined, ai.savedAuto)}>
+            {ai.autoDetect}
+          </button>{' '}
+          <span className="settings-hint">— {ai.wouldBe(wouldBeName)}</span>
+          {result('auto')}
+        </div>
       )}
       <div className="ai-paths" role="radiogroup" aria-label={ai.pathsLegend}>
         {PATHS.map((p) => {
@@ -258,55 +327,73 @@ export default function AISettings({
                   name={`${uid}-path`}
                   value={p}
                   checked={open}
-                  aria-describedby={`${uid}-${p}`}
+                  aria-describedby={isActive ? `${uid}-${p} ${uid}-${p}-active` : `${uid}-${p}`}
                   onChange={() => setPath(p)}
                 />
                 <span>{title(p)}</span>
                 {isActive && pill}
               </label>
+              {isActive && (
+                <span id={`${uid}-${p}-active`} className="sr-only">
+                  {ai.activeNote}
+                </span>
+              )}
               <p id={`${uid}-${p}`} className="settings-hint">
                 {ai.paths[p].hint}
               </p>
-              {open && !isActive && (
+              {open && !isActive && p === 'delegation' && (
                 <p className="ai-notinuse">
-                  {ai.notInUse}
-                  {p === 'delegation' && (
-                    <>
-                      {' '}
-                      <button type="button" className="ai-use" aria-label={ai.useNamed(title(p))} aria-disabled={lockedAttr} onClick={busy ? undefined : () => write([['llm.mode', 'delegation']])}>
-                        {ai.use}
-                      </button>
-                    </>
-                  )}
+                  {ai.notInUse}{' '}
+                  <button type="button" className="ai-use" aria-label={ai.paths[p].use} aria-disabled={lockedAttr} onClick={busy ? undefined : () => write([['llm.mode', 'delegation']], p, headId)}>
+                    {ai.use}
+                  </button>
                 </p>
               )}
+              {open && !isActive && p !== 'delegation' && <p className="ai-notinuse">{ai.notInUse}</p>}
+              {open && p === 'delegation' && result(p)}
               {open && p === 'subscription' && (
                 <ul className="ai-clis">
                   {cfg.clis.map((c) => {
                     const name = ai.clis[c.name] ?? c.name
                     const row = `cli:${c.name}`
                     const lock = busy || !c.found || undefined
+                    const current = c.mode === cfg.mode
                     return (
                       <li key={c.name}>
                         <div className="ai-cli-line">
                           <span className="ai-cli-name">{name}</span>
                           <span className="badge">{c.found ? ai.installed : ai.notFound}</span>
-                          {c.mode === cfg.mode ? (
+                          {current ? (
                             pill
                           ) : (
-                            <button type="button" className="ai-use" aria-label={ai.useNamed(name)} aria-disabled={lock} onClick={lock ? undefined : () => write([['llm.mode', c.mode]])}>
+                            <button
+                              type="button"
+                              className="ai-use"
+                              aria-label={ai.useNamed(name)}
+                              aria-disabled={lock}
+                              aria-describedby={c.found ? undefined : `${uid}-nf-${c.name}`}
+                              onClick={lock ? undefined : () => write([['llm.mode', c.mode]], row, testId(row))}
+                            >
                               {ai.use}
                             </button>
                           )}
-                          <button type="button" className="ai-outline" aria-label={ai.testNamed(name)} aria-disabled={lock} onClick={lock ? undefined : () => test(row, name, { mode: c.mode })}>
+                          <button id={testId(row)} type="button" className="ai-outline" aria-label={ai.testNamed(name)} aria-disabled={lock} onClick={lock ? undefined : () => test(row, name, { mode: c.mode })}>
                             {ai.test}
                           </button>
                         </div>
-                        <p className="settings-hint">{ai.cliPlans[c.name]}</p>
+                        <p className="settings-hint ai-cli-hint">
+                          {ai.cliPlans[c.name]}
+                          {current && c.found && !tested.has(row) && ` ${ai.notTested}`}
+                        </p>
                         {!c.found && INSTALL[c.name] && (
                           <div className="ai-install">
-                            <span className="settings-hint">{ai.cliInstall}</span>
-                            <FixBlock command={INSTALL[c.name]} />
+                            <span id={`${uid}-nf-${c.name}`} className="sr-only">
+                              {ai.notFoundReason(INSTALL[c.name])}
+                            </span>
+                            <span className="settings-hint">
+                              {ai.cliInstall} {ai.cliLogin[c.name]}
+                            </span>
+                            <FixBlock command={INSTALL[c.name]} label={ai.copyInstall(name)} />
                           </div>
                         )}
                         {result(row)}
@@ -340,7 +427,7 @@ export default function AISettings({
                         onChange={(e) => setKeyInput(e.target.value)}
                       />
                     </label>
-                    <button type="button" className="ai-outline" aria-disabled={busy || typed === '' || undefined} onClick={busy || typed === '' ? undefined : saveKey}>
+                    <button type="button" className="ai-outline" aria-disabled={busy || typed === '' || undefined} onClick={busy || typed === '' ? undefined : () => saveKey(p)}>
                       {ai.keySave}
                     </button>
                     {key?.set && key.source !== 'env' && (
@@ -387,15 +474,15 @@ export default function AISettings({
                       <button
                         type="button"
                         className="ai-use"
-                        aria-label={ai.useNamed(title(p))}
+                        aria-label={ai.paths[p].use}
                         aria-disabled={busy || reason !== '' || undefined}
                         aria-describedby={reason ? `${uid}-reason` : undefined}
-                        onClick={busy || reason ? undefined : useForm}
+                        onClick={busy || reason ? undefined : () => useForm(p)}
                       >
                         {ai.use}
                       </button>
                     )}
-                    <button type="button" className="ai-outline" aria-label={ai.testNamed(title(p))} aria-disabled={lockedAttr} onClick={busy ? undefined : () => test(p, title(p), formBody())}>
+                    <button id={testId(p)} type="button" className="ai-outline" aria-label={ai.testNamed(title(p))} aria-disabled={lockedAttr} onClick={busy ? undefined : () => test(p, title(p), formBody())}>
                       {ai.test}
                     </button>
                   </div>
@@ -416,6 +503,9 @@ export default function AISettings({
           {writeError}
         </p>
       )}
+      <p className="settings-hint ai-terminal">
+        {ai.terminal} <code>{`cerne settings set llm.mode ${ai.valueArg} --scope ${scope}`}</code>
+      </p>
     </section>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import Markdown from './Markdown'
 import { ask, fetchLLMConfig, type AskAnswer, type AskSource } from './api'
-import { describeLLM } from './AISettings'
+import { describeLLM, FailureView } from './AISettings'
 import { useT } from './i18n'
 
 // AILine is the read-only answer to "which AI answers me": the path, the CLI or
@@ -133,7 +133,12 @@ export default function Ask() {
         {t.ask.includeHistory}
       </label>
       {busy && <p className="status">{t.ask.querying}</p>}
-      {error && <p className="status error">{t.ask.askError(error)}</p>}
+      {error && (
+        <div className="ask-failure" role="alert">
+          <FailureView lead={t.ask.askError('')} raw={error} fixLabel={t.ai.copyFix} details={t.ai.details} />
+          <a href="#/settings/ai">{t.ai.testInSettings}</a>
+        </div>
+      )}
       {result && !busy && <AnswerView result={result} />}
     </main>
   )

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import Ask from './Ask'
 import { I18nProvider } from './i18n'
@@ -9,9 +9,11 @@ import type { LLMConfig } from './api'
 // and links to Settings › AI.
 
 const fetchLLMConfig = vi.fn<() => Promise<LLMConfig>>()
+const ask = vi.fn<(q: string, h: boolean) => Promise<never>>()
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api')>()),
   fetchLLMConfig: () => fetchLLMConfig(),
+  ask: (q: string, h: boolean) => ask(q, h),
 }))
 
 const cfg: LLMConfig = {
@@ -53,5 +55,22 @@ describe('Ask (F-0414)', () => {
       </I18nProvider>,
     )
     expect(await screen.findByText('Assinatura — Codex CLI · padrão do CLI')).toBeInTheDocument()
+  })
+
+  it('P1.2a: a failed answer shows the cause, the fix in mono with copy, the raw text and a link to Settings', async () => {
+    ask.mockRejectedValue(new Error(`claude-cli invocation failed: failed to call Claude Code: "claude" exited with exit status 1: not logged in — check 'claude /login' (subscription)`))
+    render(
+      <I18nProvider>
+        <Ask />
+      </I18nProvider>,
+    )
+    await screen.findByText('Assinatura — Codex CLI · gpt-5')
+    fireEvent.change(screen.getByPlaceholderText(/SSO/), { target: { value: 'oi' } })
+    fireEvent.submit(screen.getByRole('button', { name: /Perguntar|Pergunt/ }).closest('form')!)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('not logged in')
+    expect(within(alert).getByText('claude /login')).toBeInTheDocument()
+    expect(within(alert).getByText('Detalhes')).toBeInTheDocument()
+    expect(within(alert).getByRole('link', { name: 'Testar em Configurações › IA' })).toHaveAttribute('href', '#/settings/ai')
   })
 })

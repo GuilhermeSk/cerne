@@ -310,6 +310,7 @@ export default function Settings({ group: asked = 'general' }: { group?: Setting
               settings={all}
               scope={effScope}
               onWritten={(v) => setWritten({ base: latest.current.data, view: v })}
+              onScope={setScope}
             >
               {scopeUI}
             </AISettings>
