@@ -72,11 +72,7 @@ func runHookProvenance(cmd *cobra.Command) {
 		return
 	}
 
-	var out postToolContext
-	out.HookSpecificOutput.HookEventName = "PostToolUse"
-	out.HookSpecificOutput.AdditionalContext = msg
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	if err := enc.Encode(out); err != nil {
+	if err := writeToolContext(cmd, in, msg); err != nil {
 		fmt.Fprintln(cmd.ErrOrStderr(), err)
 	}
 }

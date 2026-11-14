@@ -51,12 +51,80 @@ type hookInput struct {
 	StopHookActive bool `json:"stop_hook_active"`
 	// Source is the SessionStart origin; "compact" after a compaction (F-0368).
 	Source string `json:"source"`
+
+	// Cursor runs the project's .claude hooks through its third-party import
+	// and sends its own payload, marked by cursor_version (F-0428).
+	CursorVersion  string          `json:"cursor_version"`
+	ToolOutput     json.RawMessage `json:"tool_output"`
+	WorkspaceRoots []string        `json:"workspace_roots"`
+	ConversationID string          `json:"conversation_id"`
+	LoopCount      int             `json:"loop_count"`
+	Status         string          `json:"status"`
 }
+
+// cursor reports a payload delivered by Cursor, which is answered in Cursor's
+// native envelope whatever --format says (F-0428).
+func (in hookInput) cursor() bool { return in.CursorVersion != "" }
 
 func decodeHookInput(r io.Reader) (hookInput, error) {
 	var in hookInput
-	err := json.NewDecoder(r).Decode(&in)
-	return in, err
+	if err := json.NewDecoder(r).Decode(&in); err != nil {
+		return in, err
+	}
+	if in.cursor() {
+		normalizeCursorInput(&in)
+	}
+	return in, nil
+}
+
+// normalizeCursorInput maps a Cursor payload onto the fields every hook reads
+// (F-0428): tool_output is the shell result as a JSON string; the project is
+// the workspace root (Cursor sends cwd "" or its own terminals dir); a missing
+// session_id falls back to conversation_id; and loop_count > 0 marks the stop
+// of a follow-up, Claude Code's stop_hook_active.
+func normalizeCursorInput(in *hookInput) {
+	if len(in.ToolResponse) == 0 {
+		var s string
+		if json.Unmarshal(in.ToolOutput, &s) == nil {
+			in.ToolResponse = json.RawMessage(s)
+		} else {
+			in.ToolResponse = in.ToolOutput
+		}
+	}
+	if in.SessionID == "" {
+		in.SessionID = in.ConversationID
+	}
+	if in.LoopCount > 0 {
+		in.StopHookActive = true
+	}
+	in.CWD = workspaceDir(in.CWD, in.WorkspaceRoots)
+}
+
+// workspaceDir is cwd when it lies inside one of the workspace roots, else the
+// first root (cwd when there is none).
+func workspaceDir(cwd string, roots []string) string {
+	for _, root := range roots {
+		if rel, err := filepath.Rel(root, cwd); cwd != "" && err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return cwd
+		}
+	}
+	if len(roots) > 0 {
+		return roots[0]
+	}
+	return cwd
+}
+
+// writeToolContext answers a PostToolUse hook with msg as context, in the
+// envelope of the harness that sent in (F-0428).
+func writeToolContext(cmd *cobra.Command, in hookInput, msg string) error {
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	if in.cursor() {
+		return enc.Encode(cursorContext{AdditionalContext: msg})
+	}
+	var out postToolContext
+	out.HookSpecificOutput.HookEventName = "PostToolUse"
+	out.HookSpecificOutput.AdditionalContext = msg
+	return enc.Encode(out)
 }
 
 func newHookBindWorkCmd() *cobra.Command {
@@ -125,11 +193,8 @@ const (
 
 // warnUnbound tells the agent, through the PostToolUse context channel, that
 // what it just registered could not be bound to this session (F-0876).
-func warnUnbound(cmd *cobra.Command, msg string) {
-	var out postToolContext
-	out.HookSpecificOutput.HookEventName = "PostToolUse"
-	out.HookSpecificOutput.AdditionalContext = msg
-	_ = json.NewEncoder(cmd.OutOrStdout()).Encode(out)
+func warnUnbound(cmd *cobra.Command, in hookInput, msg string) {
+	_ = writeToolContext(cmd, in, msg)
 }
 
 // runHookBindWork inspects a finished Bash call: when it was a successful
@@ -141,6 +206,9 @@ func runHookBindWork(cmd *cobra.Command, format string) {
 	in, err := decodeHookInput(cmd.InOrStdin())
 	if err != nil {
 		return
+	}
+	if in.cursor() {
+		format = "cursor" // F-0428: a Cursor payload, whatever the wrapper passed
 	}
 	// Gemini hands session/cwd through env (R-0036), like the gate.
 	if format == "gemini" {
@@ -185,7 +253,7 @@ func runHookBindWork(cmd *cobra.Command, format string) {
 			// Only a real, un-helped, un-refused start: a Bash call that merely
 			// MENTIONS "work start" (grep, echo, a commit message) is not one.
 			if runsCerne(ti.Command, cerneStartRe) && !strings.Contains(string(in.ToolResponse), "Error") {
-				warnUnbound(cmd, unboundWorkStart)
+				warnUnbound(cmd, in, unboundWorkStart)
 			}
 		}
 	case handoffTakeRe.MatchString(ti.Command):
@@ -194,7 +262,7 @@ func runHookBindWork(cmd *cobra.Command, format string) {
 		if m := workCreatedRe.FindStringSubmatch(string(in.ToolResponse)); m != nil {
 			id = m[1]
 		} else if runsCerne(ti.Command, cerneTakeRe) && !strings.Contains(string(in.ToolResponse), "Error") {
-			warnUnbound(cmd, unboundTake)
+			warnUnbound(cmd, in, unboundTake)
 		}
 	case featureStartRe.MatchString(ti.Command):
 		// The F-/E-/T- id is the argument; bind only if the response confirms the
@@ -264,6 +332,9 @@ func runHookWorkGate(cmd *cobra.Command, format string) {
 	in, err := decodeHookInput(cmd.InOrStdin())
 	if err != nil {
 		return
+	}
+	if in.cursor() {
+		format = "cursor" // F-0428: a Cursor payload, whatever the wrapper passed
 	}
 	// Gemini's hook runtime hands session/cwd through env, not the payload
 	// (R-0036: GEMINI_SESSION_ID, GEMINI_CWD/GEMINI_PROJECT_DIR).

@@ -1,0 +1,22 @@
+{
+  "conversation_id": "2cbcdf25-fae0-4ddd-abb5-8ce420078093",
+  "generation_id": "70707ea4-9dcb-4560-814d-61668d14a3f6",
+  "model": "grok-4.7",
+  "tool_name": "Shell",
+  "tool_input": {
+    "command": "head -n 10 *.txt 2>/dev/null || true",
+    "cwd": "__CURSOR_HOME__/projects/Users-dev-project/terminals",
+    "timeout": 30000
+  },
+  "tool_output": "{\"output\":\"(eval):1: no matches found: *.txt\\n\",\"exitCode\":0}",
+  "duration": 1847.707,
+  "tool_use_id": "bdd437d2-b006-4a45-897a-d3879a151d83",
+  "cwd": "__CURSOR_HOME__/projects/Users-dev-project/terminals",
+  "session_id": "2cbcdf25-fae0-4ddd-abb5-8ce420078093",
+  "hook_event_name": "postToolUse",
+  "cursor_version": "3.25.6",
+  "workspace_roots": [
+    "__PROJ__"
+  ],
+  "transcript_path": "__CURSOR_HOME__/projects/Users-dev-project/agent-transcripts/2cbcdf25-fae0-4ddd-abb5-8ce420078093/2cbcdf25-fae0-4ddd-abb5-8ce420078093.jsonl"
+}

@@ -82,6 +82,9 @@ func newHookSessionContextCmd() *cobra.Command {
 
 func runHookSessionContext(cmd *cobra.Command, format string) {
 	in, _ := decodeHookInput(cmd.InOrStdin()) // best effort: some providers send no payload
+	if in.cursor() {
+		format = "cursor" // F-0428: a Cursor payload, whatever the wrapper passed
+	}
 	dir := in.CWD
 	if dir == "" {
 		for _, env := range []string{"GEMINI_PROJECT_DIR", "GEMINI_CWD", "CURSOR_PROJECT_DIR", "CLAUDE_PROJECT_DIR"} {
