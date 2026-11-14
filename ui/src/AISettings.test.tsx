@@ -10,7 +10,8 @@ import type { LLMConfig, LLMKeyStatus, ResolvedSetting, SettingScope, SettingsVi
 // key endpoints, in the scope the page selector shows.
 
 const fetchLLMConfig = vi.fn<() => Promise<LLMConfig>>()
-const testLLM = vi.fn<(mode?: string) => Promise<{ ok: boolean; error?: string }>>()
+type TestBody = { mode?: string; provider?: string; model?: string; base_url?: string; key?: string }
+const testLLM = vi.fn<(b: TestBody) => Promise<{ ok: boolean; error?: string }>>()
 const putLLMKey = vi.fn<(provider: string, value: string) => Promise<LLMKeyStatus>>()
 const deleteLLMKey = vi.fn<(provider: string) => Promise<LLMKeyStatus>>()
 const putSetting = vi.fn<(id: string, scope: SettingScope, value: unknown) => Promise<SettingsView>>()
@@ -19,7 +20,7 @@ const unsetSetting = vi.fn<(id: string, scope: SettingScope) => Promise<Settings
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api')>()),
   fetchLLMConfig: () => fetchLLMConfig(),
-  testLLM: (m?: string) => testLLM(m),
+  testLLM: (b: TestBody) => testLLM(b),
   putLLMKey: (p: string, v: string) => putLLMKey(p, v),
   deleteLLMKey: (p: string) => deleteLLMKey(p),
   putSetting: (id: string, scope: SettingScope, value: unknown) => putSetting(id, scope, value),
@@ -142,18 +143,19 @@ describe('AISettings (F-0414)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Testar Claude Code' }))
     const live = await screen.findByText('Claude Code: conexão OK.')
     expect(live.closest('[aria-live="polite"]')).not.toBeNull()
-    expect(testLLM).toHaveBeenCalledWith('claude-cli')
+    expect(testLLM).toHaveBeenCalledWith({ mode: 'claude-cli' })
   })
 
   it('critério 4: Testar com erro mostra o erro com a correção que o servidor nomeou', async () => {
-    testLLM.mockResolvedValue({ ok: false, error: 'not signed in: run `gemini` and sign in' })
+    testLLM.mockResolvedValue({ ok: false, error: 'not signed in; run the login' })
     mount()
     fireEvent.click(await screen.findByRole('button', { name: 'Testar Gemini CLI' }))
-    const msg = await screen.findByText(/Gemini CLI: falhou\. not signed in: run `gemini` and sign in/)
+    const msg = (await screen.findAllByText(/not signed in; run the login/))[0]
     expect(msg.closest('[aria-live="polite"]')).not.toBeNull()
   })
 
   it('critério 7: Chave de API grava mode, provider e modelo; o modelo da Anthropic é um select do catálogo sem os deslistados', async () => {
+    fetchLLMConfig.mockResolvedValue(cfg({ key: { env: 'ANTHROPIC_API_KEY', set: true, source: 'env' } }))
     mount()
     await screen.findByText(/Em uso:/)
     pick('Chave de API')
@@ -172,11 +174,14 @@ describe('AISettings (F-0414)', () => {
     await screen.findByText(/Em uso:/)
     pick('Chave de API')
     fireEvent.change(screen.getByRole('combobox', { name: 'Provedor' }), { target: { value: 'openai' } })
+    fireEvent.change(screen.getByLabelText('Chave', { selector: 'input' }), { target: { value: 'sk-typed-0000' } })
     const model = screen.getByRole('textbox', { name: 'Modelo' })
     fireEvent.change(model, { target: { value: 'gpt-5' } })
     fireEvent.click(screen.getByRole('button', { name: 'Usar Chave de API' }))
     await waitFor(() => expect(putSetting).toHaveBeenCalledWith('llm.model', 'project', 'gpt-5'))
     expect(putSetting).toHaveBeenCalledWith('llm.provider', 'project', 'openai')
+    // item 7: Usar also saves the typed key.
+    expect(putLLMKey).toHaveBeenCalledWith('openai', 'sk-typed-0000')
   })
 
   it('critério 8: compatível pede a URL base e a grava; modelo vazio remove a chave do escopo', async () => {
@@ -184,7 +189,7 @@ describe('AISettings (F-0414)', () => {
     await screen.findByText(/Em uso:/)
     pick('Gateway ou compatível')
     fireEvent.change(screen.getByRole('combobox', { name: 'Gateway' }), { target: { value: 'compatible' } })
-    fireEvent.change(screen.getByRole('textbox', { name: 'URL base' }), { target: { value: 'http://localhost:11434/v1' } })
+    expect(screen.getByRole('textbox', { name: 'URL base' })).toHaveValue('http://localhost:11434/v1')
     fireEvent.click(screen.getByRole('button', { name: 'Usar Gateway ou compatível' }))
     await waitFor(() => expect(putSetting).toHaveBeenCalledWith('llm.base_url', 'host', 'http://localhost:11434/v1'))
     expect(putSetting).toHaveBeenCalledWith('llm.provider', 'host', 'compatible')
@@ -213,7 +218,7 @@ describe('AISettings (F-0414)', () => {
     mount()
     await screen.findByText(/Em uso:/)
     pick('Chave de API')
-    expect(screen.getByText('definida pela variável ANTHROPIC_API_KEY')).toBeInTheDocument()
+    expect(screen.getByText('Chave definida pela variável ANTHROPIC_API_KEY.')).toBeInTheDocument()
     expect(screen.getByText(/só neste computador/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Remover chave' })).toBeNull()
   })
@@ -228,6 +233,113 @@ describe('AISettings (F-0414)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remover chave' }))
     await waitFor(() => expect(deleteLLMKey).toHaveBeenCalledWith('anthropic'))
     await screen.findByText('Nenhuma chave definida.')
+  })
+
+  it('item 4: a CLI em uso mostra "em uso" em vez de Usar; as outras mantêm o botão', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    const row = screen.getByText('Claude Code').closest('li')!
+    expect(row).toHaveTextContent('em uso')
+    expect(within(row).queryByRole('button', { name: 'Usar Claude Code' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Usar Gemini CLI' })).toBeInTheDocument()
+  })
+
+  it('item 4: caminho escolhido e fora de uso diz "Não está em uso" com o botão Usar', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    pick('Delegação')
+    expect(screen.getByText(/Não está em uso/)).toBeInTheDocument()
+  })
+
+  it('item 4: com modo gravado no escopo, Voltar à detecção automática remove llm.mode', async () => {
+    fetchLLMConfig.mockResolvedValue(cfg({ source: 'configured', mode: 'claude-cli' }))
+    mount([reg('llm.mode', { stored: { project: 'claude-cli' } }), ...noStored.slice(1)])
+    fireEvent.click(await screen.findByRole('button', { name: 'Voltar à detecção automática' }))
+    await waitFor(() => expect(unsetSetting).toHaveBeenCalledWith('llm.mode', 'project'))
+  })
+
+  it('item 4: sem modo gravado não oferece voltar à detecção', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    expect(screen.queryByRole('button', { name: 'Voltar à detecção automática' })).toBeNull()
+  })
+
+  it('item 5: o resultado do teste aparece dentro da linha testada, com a correção em mono e os detalhes', async () => {
+    testLLM.mockResolvedValue({
+      ok: false,
+      error: `gemini-cli invocation failed: failed to call Gemini CLI: "gemini" exited with exit status 1: boom — run 'gemini auth' and sign in`,
+    })
+    mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'Testar Gemini CLI' }))
+    const row = screen.getByText('Gemini CLI').closest('li')!
+    expect(await within(row).findByText('gemini auth')).toBeInTheDocument()
+    expect(within(row).getByText('Detalhes')).toBeInTheDocument()
+    expect(within(screen.getByText('Claude Code').closest('li')!).queryByText('gemini auth')).toBeNull()
+  })
+
+  it('item 5: Testar na chave de API testa o formulário não salvo, com a chave digitada', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    pick('Chave de API')
+    fireEvent.change(screen.getByLabelText('Chave', { selector: 'input' }), { target: { value: 'sk-typed-0000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Testar Chave de API' }))
+    await waitFor(() =>
+      expect(testLLM).toHaveBeenCalledWith({ provider: 'anthropic', model: '', base_url: '', key: 'sk-typed-0000' }),
+    )
+    expect(screen.queryByText(/use “Usar” antes/)).toBeNull()
+  })
+
+  it('item 7: Usar fica aria-disabled com o motivo quando não há chave', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    pick('Chave de API')
+    const use = screen.getByRole('button', { name: 'Usar Chave de API' })
+    expect(use).toHaveAttribute('aria-disabled', 'true')
+    expect(use).toHaveAccessibleDescription(/Digite uma chave/)
+    fireEvent.click(use)
+    expect(putSetting).not.toHaveBeenCalled()
+  })
+
+  it('item 7: compatível sem URL base não pode ser usado', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    pick('Gateway ou compatível')
+    fireEvent.change(screen.getByRole('combobox', { name: 'Gateway' }), { target: { value: 'compatible' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'URL base' }), { target: { value: '' } })
+    const use = screen.getByRole('button', { name: 'Usar Gateway ou compatível' })
+    expect(use).toHaveAttribute('aria-disabled', 'true')
+    expect(use).toHaveAccessibleDescription(/URL base/)
+  })
+
+  it('item 8: com Host selecionado e llm.* gravado no Projeto, avisa que o Projeto sobrepõe', async () => {
+    mount([reg('llm.mode', { stored: { project: 'delegation' } }), ...noStored.slice(1)], 'host')
+    expect(await screen.findByText('O Projeto sobrepõe o Host: isto não vale aqui.')).toBeInTheDocument()
+  })
+
+  it('item 8: o Host explica por que a assinatura é pessoal; não há nota duplicada do escopo', async () => {
+    mount(noStored, 'host')
+    await screen.findByText(/Em uso:/)
+    expect(screen.getByText(/assinatura é pessoal/i)).toBeInTheDocument()
+    expect(screen.queryByText(/As escolhas gravam/)).toBeNull()
+  })
+
+  it('item 10: cada CLI diz o plano que usa e a não encontrada mostra o comando de instalação', async () => {
+    mount()
+    await screen.findByText(/Em uso:/)
+    expect(screen.getByText('Claude Code').closest('li')).toHaveTextContent('Claude Pro/Max')
+    const codex = screen.getByText('Codex CLI').closest('li')!
+    expect(codex).toHaveTextContent('ChatGPT Plus/Pro')
+    expect(within(codex).getByText('npm i -g @openai/codex')).toBeInTheDocument()
+  })
+
+  it('item 12: o campo da chave é new-password e uma chave recusada entra na descrição', async () => {
+    fetchLLMConfig.mockResolvedValue(cfg({ key: { env: 'ANTHROPIC_API_KEY', set: false, problem: 'mode 0644' } }))
+    mount()
+    await screen.findByText(/Em uso:/)
+    pick('Chave de API')
+    const field = screen.getByLabelText('Chave', { selector: 'input' })
+    expect(field).toHaveAttribute('autocomplete', 'new-password')
+    expect(field).toHaveAccessibleDescription(/mode 0644/)
   })
 
   it('critério 11: uma escrita que falha avisa o motivo em um alerta', async () => {

@@ -44,4 +44,14 @@ describe('Ask (F-0414)', () => {
     expect(screen.queryByRole('combobox')).toBeNull()
     expect(screen.getByRole('link', { name: 'Configurar' })).toHaveAttribute('href', '#/settings/ai')
   })
+
+  it('item 11: a CLI with no model says "padrão do CLI", and the intro links to nothing browser-blue', async () => {
+    fetchLLMConfig.mockResolvedValue({ ...cfg, model: '' })
+    render(
+      <I18nProvider>
+        <Ask />
+      </I18nProvider>,
+    )
+    expect(await screen.findByText('Assinatura — Codex CLI · padrão do CLI')).toBeInTheDocument()
+  })
 })

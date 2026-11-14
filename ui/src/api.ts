@@ -1254,11 +1254,14 @@ export async function fetchLLMConfig(): Promise<LLMConfig> {
 
 // testLLM faz uma chamada mínima no modo pedido (ou no resolvido); uma falha
 // de conexão é a resposta ({ok:false,error}), não uma exceção.
-export async function testLLM(mode?: LLMMode): Promise<{ ok: boolean; error?: string }> {
+// O corpo pode levar o formulário não salvo (provider, model, base_url e a chave
+// digitada, usada só nessa chamada, em memória no servidor).
+export type LLMTestBody = { mode?: LLMMode; provider?: string; model?: string; base_url?: string; key?: string }
+export async function testLLM(body: LLMTestBody = {}): Promise<{ ok: boolean; error?: string }> {
   const r = await fetch(`${base()}/config/llm/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(mode ? { mode } : {}),
+    body: JSON.stringify(body),
   })
   if (!r.ok) throw new Error(await errorMessage(r))
   return (await r.json()) as { ok: boolean; error?: string }
@@ -1296,18 +1299,6 @@ export async function setPreferredProvider(provider: string): Promise<void> {
     body: JSON.stringify({ provider }),
   })
   if (!r.ok) throw new Error(await errorMessage(r))
-}
-
-// setLLMMode grava o modo no .cernerc; o servidor relê a config a cada
-// pergunta, então a troca vale na próxima pergunta (sem reiniciar).
-export async function setLLMMode(mode: LLMMode): Promise<LLMMode> {
-  const r = await fetch(`${base()}/config/llm`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode }),
-  })
-  if (!r.ok) throw new Error(await errorMessage(r))
-  return ((await r.json()) as { mode: LLMMode }).mode
 }
 
 // ---- settings (F-0314/F-0315) ----

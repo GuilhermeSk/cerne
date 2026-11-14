@@ -2343,6 +2343,10 @@ h2 {
 
 .ask-ai-label { color: var(--muted); }
 
+.ask-intro { color: var(--muted); }
+.ask-intro a,
+.ask-ai a,
+.ask-notice a { color: var(--link); }
 .ask-ai a:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
 /* referências externas (case 0020) */
@@ -3332,15 +3336,18 @@ button.clarify-chip { cursor: pointer; font: inherit; }
    1px rule between access paths, no fill, no side-tab; only the open path
    shows its controls. */
 .ai-panel { margin-top: 0.5rem; }
-.ai-inuse { margin: 0; font-size: 1rem; }
-.ai-inuse-label { color: var(--muted); }
+.ai-headline { margin: 0; font-size: 1.25rem; font-weight: 600; line-height: 1.3; color: var(--fg); }
+.ai-inuse-label { color: var(--muted); font-weight: 400; }
+.ai-headline strong { font-weight: 600; }
+.ai-headline .ai-origin { font-size: 0.85rem; font-weight: 400; }
 .ai-origin { color: var(--muted); font-size: 0.85rem; }
 .ai-paths { margin-top: 0.75rem; border-top: 1px solid var(--border); }
 .ai-path { padding: 0.8rem 0; border-bottom: 1px solid var(--border-soft); }
 .ai-path-head { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer; }
 .ai-path-head input { margin: 0; accent-color: var(--fg); }
 .ai-path-head input:focus-visible,
-.ai-panel button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.ai-panel button:focus-visible,
+.ai-panel summary:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 .ai-path > .settings-hint { margin: 0.2rem 0 0 1.5rem; max-width: 70ch; }
 .ai-clis { list-style: none; margin: 0.6rem 0 0 1.5rem; padding: 0; display: grid; gap: 0.4rem; }
 .ai-clis li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
@@ -3354,3 +3361,24 @@ button.clarify-chip { cursor: pointer; font: inherit; }
 .ai-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .ai-panel button[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
 .ai-notice { min-height: 1.4em; margin: 0.75rem 0 0; font-size: 0.9rem; }
+
+/* Actions (F-0414): "Use" is the full-ink button of the Settings rows; Test,
+   Save key and Remove are the outline one. No browser-default buttons. */
+.ai-use,
+.ai-outline,
+.ai-panel .load-notice button { font: inherit; font-size: 0.85rem; min-height: 1.75rem; padding: 0.3rem 0.8rem; border-radius: 6px; cursor: pointer; }
+.ai-use { border: 1px solid var(--fg); background: var(--fg); color: var(--bg); }
+.ai-outline,
+.ai-panel .load-notice button { border: 1px solid var(--border-field); background: transparent; color: var(--fg); }
+.ai-pill { color: var(--fg); border-color: var(--fg); background: transparent; }
+.ai-notinuse { margin: 0.4rem 0 0 1.5rem; font-size: 0.9rem; color: var(--muted); }
+.ai-cli-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.ai-install { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
+.ai-install .harness-fix,
+.ai-result .harness-fix { margin: 0; max-width: 28rem; }
+.ai-result { margin-top: 0.3rem; font-size: 0.9rem; }
+.ai-result p { margin: 0 0 0.3rem; }
+.ai-result details { font-size: 0.85rem; color: var(--muted); }
+.ai-result summary { cursor: pointer; }
+.ai-raw { margin: 0.3rem 0 0; max-width: 100%; overflow-x: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; }
+.settings-text { box-sizing: border-box; }

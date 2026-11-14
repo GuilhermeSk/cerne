@@ -59,6 +59,8 @@ describe('Settings, ai group (F-0414)', () => {
     expect(await screen.findByText(/Em uso:/)).toBeInTheDocument()
     expect(screen.getByRole('radiogroup')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { pressed: true }).length + screen.getAllByRole('button', { pressed: false }).length).toBe(2)
+    // item 9: the ai page opens on Host (a subscription is personal).
+    expect(screen.getByText(/assinatura é pessoal/i)).toBeInTheDocument()
   })
 
   it('a search still lists the llm.* keys as registry rows', async () => {

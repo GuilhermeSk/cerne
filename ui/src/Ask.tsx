@@ -109,7 +109,7 @@ export default function Ask() {
   return (
     <main className="page">
       <h1>{t.ask.title}</h1>
-      <p className="muted">
+      <p className="ask-intro">
         {t.ask.intro1}<a href="#/search">{t.ask.introLink}</a>{t.ask.intro2}
       </p>
       <AILine />
