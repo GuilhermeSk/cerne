@@ -38,7 +38,7 @@ func wantInOrder(t *testing.T, s string, wants ...string) {
 }
 
 const (
-	stepCardNow    = "complete the card now, before any code"
+	stepCardNow    = "complete the card now, in this same turn, before any code"
 	stepSpec       = "write the real spec: cerne pull, fill .docs/current/features/"
 	stepTags       = "tag it: cerne feature retag "
 	stepCapability = "link its capability: cerne feature capability "

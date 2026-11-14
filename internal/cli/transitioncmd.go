@@ -499,7 +499,7 @@ func printNewCardNextStep(w io.Writer, ctx projCtx, f store.Feature, seeded bool
 		return
 	}
 	fmt.Fprintln(w, "Next step:")
-	fmt.Fprintln(w, "  - complete the card now, before any code")
+	fmt.Fprintln(w, "  - complete the card now, in this same turn, before any code")
 	if seeded {
 		fmt.Fprintf(w, "  - write the real spec: cerne pull, fill .docs/current/features/%s-*/spec.md, cerne push\n", f.ID)
 	}
