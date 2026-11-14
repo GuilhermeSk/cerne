@@ -563,7 +563,11 @@ func incompleteDocFindings(repoDir string, features []store.Feature, decisions [
 		if !liveFeatureStates[f.State] {
 			continue // only live work; implemented/terminal docs are settled history
 		}
-		if err := check("content/features/"+f.ID+"/spec.md", doclang.Spec); err != nil {
+		specKind := doclang.Spec
+		if strings.HasPrefix(f.ID, "B-") {
+			specKind = doclang.Bug // T-0006: a bug report has its own three sections
+		}
+		if err := check("content/features/"+f.ID+"/spec.md", specKind); err != nil {
 			return nil, err
 		}
 		if err := check("content/features/"+f.ID+"/plan.md", doclang.Plan); err != nil {
