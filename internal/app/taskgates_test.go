@@ -277,6 +277,52 @@ func TestAcceptCascadeSkipsFeatureChildren(t *testing.T) {
 	}
 }
 
+// TestEpicCloseRosterListsChildBars (crit. 7): the epic's closing scaffold
+// lists each child with the bar its spec declares and its outcome — the
+// rounds of its result, or none for an exempt or inherited bar — so the
+// parent's accept reads every choice at once.
+func TestEpicCloseRosterListsChildBars(t *testing.T) {
+	t.Setenv("CERNE_ACTOR", "")
+	repoDir, projDir, _ := newFeatureBackend(t)
+	seedWithSpec(t, repoDir, store.Feature{ID: "E-0001", State: domain.StateInDevelopment}, taskBody+namedTaskBar)
+	seedWithSpec(t, repoDir, store.Feature{ID: "T-0002", Parent: "E-0001", State: domain.StateImplemented}, taskBody+namedTaskBar)
+	seedWithSpec(t, repoDir, store.Feature{ID: "T-0003", Parent: "E-0001", State: domain.StateImplemented}, taskBody+exemptTaskBar)
+	seedWithSpec(t, repoDir, store.Feature{ID: "T-0004", Parent: "E-0001", State: domain.StateInDevelopment}, taskBody+"Barra: herdada de E-0001\n")
+	for id, body := range map[string]string{
+		"T-0002": "# R\n\n## Resultado\n\nEntregue.\n\n## Gauntlet\n\nBarra: fixture de teste\nRodada 1 — derrota: \"B cobre o vazio\"\nRodada 2 — vitória: \"A cobre tudo\"\n",
+		"T-0004": "# R\n\n## Resultado\n\nEntregue.\n",
+	} {
+		if err := os.WriteFile(FeatureDocPath(repoDir, id, "result.md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := gitback.CommitAndPush(repoDir, "results"); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := TransitionFeature(repoDir, projDir, "T-0004", domain.ActionComplete, "", "", nil)
+	if err != nil {
+		t.Fatalf("complete T-0004: %v", err)
+	}
+	if out.EpicReadyToClose != "E-0001" {
+		t.Fatalf("EpicReadyToClose = %q, want E-0001", out.EpicReadyToClose)
+	}
+	data, err := os.ReadFile(FeatureDocPath(repoDir, "E-0001", "result.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roster := string(data)
+	for _, want := range []string{
+		"- T-0002: Feature T-0002 — Barra: fixture de teste — referência nomeada — Rodada 1: derrota; Rodada 2: vitória — result: content/features/T-0002/result.md",
+		"- T-0003: Feature T-0003 — Barra: não aplicável (regra de gate) — padrão alternativo: testes — result:",
+		"- T-0004: Feature T-0004 — Barra: herdada de E-0001 — result:",
+	} {
+		if !strings.Contains(roster, want) {
+			t.Errorf("roster lacks %q:\n%s", want, roster)
+		}
+	}
+}
+
 // TestStartTaskAcceptsInheritedBar (crit. 4): each of the four forms starts a
 // task — the inherited one when it names the parent and the parent's bar is
 // named.

@@ -1268,7 +1268,7 @@ func writeEpicResultStub(repoDir, id, title string, children []store.Feature) er
 	var roster strings.Builder
 	roster.WriteString("<!-- ROSTER DAS FILHAS (matéria-prima para a seção Resultado; apague ao preencher):\n")
 	for _, c := range children {
-		roster.WriteString(fmt.Sprintf("- %s: %s — result: content/features/%s/result.md\n", c.ID, c.Title, c.ID))
+		roster.WriteString(fmt.Sprintf("- %s: %s%s — result: content/features/%s/result.md\n", c.ID, c.Title, childBarOutcome(repoDir, c.ID), c.ID))
 	}
 	roster.WriteString("-->\n\n")
 	content := "---\ncerne_id: " + id + "\n---\n\n" + roster.String() + restmpl.StubIn(store.DocsLanguage(repoDir), title)

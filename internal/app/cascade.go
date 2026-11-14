@@ -2,10 +2,14 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/henriquesakata/cerne/internal/doccheck"
+	"github.com/henriquesakata/cerne/internal/doclang"
 	"github.com/henriquesakata/cerne/internal/domain"
+	"github.com/henriquesakata/cerne/internal/lint"
 	"github.com/henriquesakata/cerne/internal/store"
 )
 
@@ -123,6 +127,32 @@ func cascadeAccept(repoDir, projDir, parentID string) (cascaded, error) {
 		out.lines = append(append(out.lines, pendings...), ideas...)
 	}
 	return out, nil
+}
+
+// childBarOutcome is a child's bar and Gauntlet outcome for the epic's
+// closing roster (T-0007 crit. 7): " — <bar line> — Rodada 1: derrota;
+// Rodada 2: vitória", in the documentation language; the rounds are left out
+// when its result records none (an exempt or inherited bar), the bar when its
+// spec declares none. Unreadable documents read as empty.
+func childBarOutcome(repoDir, id string) string {
+	var b strings.Builder
+	spec, _ := os.ReadFile(FeatureDocPath(repoDir, id, "spec.md"))
+	if bar, err := doccheck.SpecBar(spec); err == nil {
+		b.WriteString(" — " + bar)
+	}
+	result, _ := os.ReadFile(FeatureDocPath(repoDir, id, "result.md"))
+	l := store.DocsLanguage(repoDir)
+	words := map[string]doclang.Term{"win": doclang.Win, "loss": doclang.Loss, "tie": doclang.Tie}
+	var rounds []string
+	for _, r := range lint.GauntletRoundList(result) {
+		if r.N > 0 && r.Outcome != "" {
+			rounds = append(rounds, fmt.Sprintf("%s %d: %s", doclang.Display(doclang.Round, l), r.N, doclang.Display(words[r.Outcome], l)))
+		}
+	}
+	if len(rounds) > 0 {
+		b.WriteString(" — " + strings.Join(rounds, "; "))
+	}
+	return b.String()
 }
 
 // childrenOf is parentID's direct children, sorted by id.
