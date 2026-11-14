@@ -9,14 +9,22 @@ import (
 )
 
 func TestResolveMode(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"", ModeDelegation},
-		{"delegation", ModeDelegation},
-		{"byo-key", "byo-key"},
+	cases := []struct{ in, detected, want, src string }{
+		{"", "", ModeDelegation, SourceDefault},
+		{"", "claude", ModeClaudeCLI, SourceDetected},
+		{"", "codex", ModeCodexCLI, SourceDetected},
+		{"", "gemini", ModeGeminiCLI, SourceDetected},
+		{"delegation", "claude", ModeDelegation, SourceConfigured},
+		{"byo-key", "codex", "byo-key", SourceConfigured},
+		{"gemini-cli", "", ModeGeminiCLI, SourceConfigured},
 	}
+	orig := detectCLI
+	t.Cleanup(func() { detectCLI = orig })
 	for _, c := range cases {
-		if got := ResolveMode(c.in); got != c.want {
-			t.Fatalf("ResolveMode(%q) = %q, want %q", c.in, got, c.want)
+		detectCLI = func() string { return c.detected }
+		got, src := ResolveModeSource(c.in)
+		if got != c.want || src != c.src || ResolveMode(c.in) != c.want {
+			t.Fatalf("ResolveModeSource(%q) with %q = %q/%q, want %q/%q", c.in, c.detected, got, src, c.want, c.src)
 		}
 	}
 }
@@ -51,5 +59,11 @@ func TestConfiguredProviders(t *testing.T) {
 		if got := strings.Join(ConfiguredProviders(c.cfg), ","); got != c.want {
 			t.Fatalf("ConfiguredProviders(%+v) = %q, want %q", c.cfg, got, c.want)
 		}
+	}
+}
+
+func TestMain_DetectionOffByDefault(t *testing.T) {
+	if got, src := ResolveModeSource(""); got != ModeDelegation || src != SourceDefault {
+		t.Fatalf("under go test an empty mode must stay delegation, got %q/%q", got, src)
 	}
 }

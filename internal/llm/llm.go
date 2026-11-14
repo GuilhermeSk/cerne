@@ -9,7 +9,11 @@
 // future BYO-key implementation behind the same interface.
 package llm
 
-import "context"
+import (
+	"context"
+
+	"github.com/henriquesakata/cerne/internal/project"
+)
 
 // ModeDelegation is the default provider mode: cerne emits prompts for the
 // host agent instead of calling an LLM itself. No API key, no HTTP.
@@ -32,13 +36,41 @@ type Streamer interface {
 	Stream(ctx context.Context, prompt string, onDelta func(string) error) (string, error)
 }
 
-// ResolveMode maps a configured .cernerc [llm] mode to the effective mode,
-// defaulting an empty value to ModeDelegation.
+// ModeCodexCLI and ModeGeminiCLI are the subscription modes that shell to the
+// Codex CLI and the Gemini CLI (F-0414), like ModeClaudeCLI does for Claude Code.
+const (
+	ModeCodexCLI  = "codex-cli"
+	ModeGeminiCLI = "gemini-cli"
+)
+
+// detectCLI is the PATH probe behind the dynamic default; tests replace it.
+var detectCLI = project.DetectSubscriptionCLI
+
+// Sources of the effective mode (ResolveModeSource).
+const (
+	SourceConfigured = "configured"
+	SourceDetected   = "detected"
+	SourceDefault    = "default"
+)
+
+// ResolveMode maps a configured [llm] mode to the effective mode. An empty
+// value resolves to the subscription CLI found on PATH (claude-cli, codex-cli,
+// gemini-cli) and to ModeDelegation when there is none.
 func ResolveMode(mode string) string {
-	if mode == "" {
-		return ModeDelegation
+	m, _ := ResolveModeSource(mode)
+	return m
+}
+
+// ResolveModeSource is ResolveMode plus where the answer came from: a stored
+// value is "configured", a PATH hit "detected", the fallback "default".
+func ResolveModeSource(mode string) (string, string) {
+	if mode != "" {
+		return mode, SourceConfigured
 	}
-	return mode
+	if cli := detectCLI(); cli != "" {
+		return cli + "-cli", SourceDetected
+	}
+	return ModeDelegation, SourceDefault
 }
 
 // Fake is a deterministic Provider for tests: it returns Reply and records

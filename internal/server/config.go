@@ -111,7 +111,7 @@ type llmConfigRequest struct {
 // validLLMMode reports whether mode is one cerne understands.
 func validLLMMode(mode string) bool {
 	switch mode {
-	case llm.ModeDelegation, llm.ModeByoKey, llm.ModeClaudeCLI:
+	case llm.ModeDelegation, llm.ModeByoKey, llm.ModeClaudeCLI, llm.ModeCodexCLI, llm.ModeGeminiCLI:
 		return true
 	}
 	return false
@@ -146,7 +146,7 @@ func handleLLMConfigPut(w http.ResponseWriter, r *http.Request, projDir string) 
 	}
 	if !validLLMMode(req.Mode) {
 		writeJSON(w, http.StatusBadRequest,
-			errorBody(`invalid mode (expected "delegation", "claude-cli" or "byo-key")`))
+			errorBody(`invalid mode (expected "delegation", "claude-cli", "codex-cli", "gemini-cli" or "byo-key")`))
 		return
 	}
 	_, dir, err := project.LoadConfig(projDir)
