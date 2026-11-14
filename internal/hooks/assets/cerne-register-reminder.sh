@@ -12,6 +12,16 @@
 # To turn it off for a process (eval, CI), set CERNE_NO_AGENT_HOOKS=1
 # instead of editing it (F-0360).
 [ -n "${CERNE_NO_AGENT_HOOKS:-}" ] && exit 0
+# Cursor runs this script through its import of the .claude hooks and reads
+# the hook's stdout as JSON (CURSOR_VERSION is set on every Cursor hook): it
+# gets the same rules and live board in its own envelope (F-0428), unless the
+# project's .cursor/hooks.json already wires cerne's native sessionStart.
+if [ -n "${CURSOR_VERSION:-}" ]; then
+  grep -qs 'cerne hook session-context' "${CURSOR_PROJECT_DIR:-.}/.cursor/hooks.json" && exit 0
+  command -v cerne >/dev/null 2>&1 || exit 0
+  cerne hook session-context --format cursor 2>/dev/null || true
+  exit 0
+fi
 cat <<'RULES'
 cerne project rules — make in-flight work visible from minute one:
 - Picking up a FEATURE? First action: `cerne feature new "<title>" --context "<1-3 sentences of why>"` (lands as a candidate on the kanban; --file spec.md for a one-shot spec). Register it complete in that same act: spec (`--file`), tags (`--facet`/`--component`) and, once the project has a capability taxonomy, capability (`cerne feature capability <id> C-…`) — `cerne feature approve <id> --check` flags a card without them and the approve refuses it. Advance it as you go: spec -> approve (HUMAN gate), plan -> `cerne feature start`, result -> `cerne feature complete`. Abandoned? `cerne feature reject <id> --reason "..."`.
