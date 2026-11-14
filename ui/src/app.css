@@ -2336,27 +2336,14 @@ h2 {
   margin-top: 1rem;
 }
 
-.ask-mode {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+.ask-ai {
   margin: 0.5rem 0 0.25rem;
   font-size: 0.9rem;
 }
 
-.ask-mode-label { color: var(--muted); }
+.ask-ai-label { color: var(--muted); }
 
-.ask-mode select {
-  font: inherit;
-  font-size: 0.9rem;
-  padding: 0.25rem 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-}
-
-.ask-mode-hint { color: var(--faint); font-size: 0.82rem; }
+.ask-ai a:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
 /* referências externas (case 0020) */
 .badge-external {
