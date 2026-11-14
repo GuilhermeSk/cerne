@@ -684,3 +684,175 @@ func TestCLIProviderOneShotRetriesWithoutIsolationFlags(t *testing.T) {
 		t.Fatalf("retry args = %v, want %v", calls[1], want)
 	}
 }
+
+// codexFake plays `codex exec`: it records argv/stdin/cwd and writes reply to
+// the file named by -o, like the real CLI does.
+func codexFake(reply string, gotArgs *[]string, gotStdin, gotDir *string) runner {
+	return func(_ context.Context, dir, _ string, args []string, stdin string) (string, string, error) {
+		*gotArgs, *gotStdin, *gotDir = args, stdin, dir
+		for i, a := range args {
+			if a == "-o" {
+				if err := os.WriteFile(args[i+1], []byte(reply), 0o600); err != nil {
+					return "", "", err
+				}
+			}
+		}
+		return "noise on stdout", "", nil
+	}
+}
+
+func TestCodexCLIProvider(t *testing.T) {
+	var args []string
+	var stdin, dir string
+	p := &cliProvider{kind: ModeCodexCLI, bin: "codex", model: "gpt-5", run: codexFake("  the answer\n", &args, &stdin, &dir)}
+	out, err := p.Complete(context.Background(), "question?")
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if out != "the answer" {
+		t.Fatalf("out = %q, want the -o file content", out)
+	}
+	if stdin != "question?" {
+		t.Fatalf("stdin = %q", stdin)
+	}
+	if dir == "" {
+		t.Fatal("codex must run in an empty temp dir, not the project")
+	}
+	want := []string{"exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "-o", args[6], "-m", "gpt-5", "-"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Fatal("temp dir must be removed after the call")
+	}
+	// No model: no -m.
+	p.model = ""
+	if _, err := p.Complete(context.Background(), "q"); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range args {
+		if a == "-m" {
+			t.Fatalf("-m passed without a model: %v", args)
+		}
+	}
+}
+
+func TestCodexCLIErrorsNameTheFix(t *testing.T) {
+	for _, c := range []struct{ err, want string }{
+		{"could not run \"codex\" (install Codex CLI and ensure it is on PATH): x", "install Codex CLI"},
+		{"\"codex\" exited with exit status 1: not logged in", "codex login"},
+	} {
+		p := &cliProvider{kind: ModeCodexCLI, bin: "codex", run: func(context.Context, string, string, []string, string) (string, string, error) {
+			return "", "", errors.New(c.err)
+		}}
+		_, err := p.Complete(context.Background(), "q")
+		if !errors.Is(err, ErrCodexCLI) || errors.Is(err, ErrClaudeCLI) {
+			t.Fatalf("err = %v, want ErrCodexCLI only", err)
+		}
+		if !strings.Contains(err.Error(), c.want) || strings.Contains(err.Error(), "Claude") {
+			t.Fatalf("err = %v, want %q and no Claude wording", err, c.want)
+		}
+	}
+}
+
+func TestCodexCLIEmptyAnswerIsAnError(t *testing.T) {
+	var a []string
+	var s, d string
+	p := &cliProvider{kind: ModeCodexCLI, bin: "codex", run: codexFake("  ", &a, &s, &d)}
+	if _, err := p.Complete(context.Background(), "q"); !errors.Is(err, ErrCodexCLI) {
+		t.Fatalf("err = %v, want ErrCodexCLI", err)
+	}
+}
+
+func TestGeminiCLIProvider(t *testing.T) {
+	var args []string
+	var stdin, dir string
+	fake := func(_ context.Context, d, _ string, a []string, in string) (string, string, error) {
+		args, stdin, dir = a, in, d
+		return `{"response":" hello \n","stats":{}}`, "", nil
+	}
+	p := &cliProvider{kind: ModeGeminiCLI, bin: "gemini", model: "gemini-2.5-pro", run: fake}
+	out, err := p.Complete(context.Background(), "hi?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "hello" || stdin != "hi?" || dir == "" {
+		t.Fatalf("out=%q stdin=%q dir=%q", out, stdin, dir)
+	}
+	want := []string{"--output-format", "json", "--approval-mode", "plan", "-m", "gemini-2.5-pro"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+	p.model = ""
+	p.Complete(context.Background(), "q")
+	if !reflect.DeepEqual(args, want[:4]) {
+		t.Fatalf("args without model = %v", args)
+	}
+}
+
+func TestGeminiCLIErrors(t *testing.T) {
+	run := func(out string, err error) runner {
+		return func(context.Context, string, string, []string, string) (string, string, error) { return out, "", err }
+	}
+	cases := []struct {
+		name string
+		run  runner
+		want string
+	}{
+		{"missing", run("", errors.New("could not run \"gemini\" (install Gemini CLI and ensure it is on PATH): x")), "install Gemini CLI"},
+		{"invalid input", run("", errors.New("\"gemini\" exited with exit status 42: bad")), "invalid input"},
+		{"login", run("", errors.New("\"gemini\" exited with exit status 1: auth")), "run gemini and sign in"},
+		{"bad json", run("not json", nil), "unreadable"},
+		{"json error", run(`{"error":{"message":"quota"}}`, nil), "quota"},
+	}
+	for _, c := range cases {
+		p := &cliProvider{kind: ModeGeminiCLI, bin: "gemini", run: c.run}
+		_, err := p.Complete(context.Background(), "q")
+		if !errors.Is(err, ErrGeminiCLI) || !strings.Contains(err.Error(), c.want) || strings.Contains(err.Error(), "Claude") {
+			t.Errorf("%s: err = %v, want ErrGeminiCLI containing %q", c.name, err, c.want)
+		}
+	}
+}
+
+func TestExecRunNamesTheMissingCLI(t *testing.T) {
+	for bin, want := range map[string]string{"cerne-no-such-claude": "install Claude Code", "cerne-no-such-codex": "install Codex CLI", "cerne-no-such-gemini": "install Gemini CLI"} {
+		_, _, err := execRun(context.Background(), "", bin, nil, "")
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want %q", bin, err, want)
+		}
+	}
+}
+
+func TestNewProviderSubscriptionCLIs(t *testing.T) {
+	for mode, kind := range map[string]string{ModeCodexCLI: ModeCodexCLI, ModeGeminiCLI: ModeGeminiCLI} {
+		for _, build := range []func() (Provider, error){
+			func() (Provider, error) { return NewProvider(project.LLMConfig{Mode: mode, Model: "m"}) },
+			func() (Provider, error) {
+				return NewAgentProvider(project.LLMConfig{Mode: mode, Model: "m"}, "/x", true)
+			},
+		} {
+			p, err := build()
+			cp, ok := p.(*cliProvider)
+			if err != nil || !ok || cp.kind != kind || cp.model != "m" || cp.agentTools != nil {
+				t.Fatalf("%s: %v %#v", mode, err, p)
+			}
+			if _, isTool := p.(ToolCaller); isTool {
+				t.Fatalf("%s must not be a ToolCaller (chat has no execution channel)", mode)
+			}
+		}
+	}
+	// No model configured: no Anthropic default leaks into -m.
+	p, _ := NewProvider(project.LLMConfig{Mode: ModeCodexCLI})
+	if m := p.(*cliProvider).model; m != "" {
+		t.Fatalf("model = %q, want empty", m)
+	}
+	if got := ConfiguredProviders(project.LLMConfig{Mode: ModeCodexCLI}); !reflect.DeepEqual(got, []string{"openai"}) {
+		t.Fatalf("codex providers = %v", got)
+	}
+	if got := ConfiguredProviders(project.LLMConfig{Mode: ModeGeminiCLI}); !reflect.DeepEqual(got, []string{"gemini"}) {
+		t.Fatalf("gemini providers = %v", got)
+	}
+	if _, err := ListModels(context.Background(), project.LLMConfig{Mode: ModeGeminiCLI}); !errors.Is(err, ErrNoListing) {
+		t.Fatalf("ListModels err = %v", err)
+	}
+}

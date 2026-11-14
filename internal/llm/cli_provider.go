@@ -3,11 +3,14 @@ package llm
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -18,6 +21,13 @@ const ModeClaudeCLI = "claude-cli"
 // ErrClaudeCLI wraps any failure of the claude-cli invocation (executable not
 // found, non-zero exit, login missing). Callers detect it with errors.Is.
 var ErrClaudeCLI = errors.New("claude-cli invocation failed")
+
+// ErrCodexCLI and ErrGeminiCLI are ErrClaudeCLI's siblings for the other
+// subscription CLIs (F-0414).
+var (
+	ErrCodexCLI  = errors.New("codex-cli invocation failed")
+	ErrGeminiCLI = errors.New("gemini-cli invocation failed")
+)
 
 // AgentReadTools is the exact tool allowlist the agentic chat provider grants
 // the Claude Code CLI: cerne's READ commands (F-0224 criterion 1) plus the
@@ -154,7 +164,20 @@ func execRunEnv(ctx context.Context, dir, name string, args []string, stdin stri
 		return "", "", errors.New(describeExit(name, exitErr.ProcessState.String(), stdout.Bytes(), stderr.Bytes()))
 	}
 	// Non-exit error: the binary could not be started (not in PATH, etc.).
-	return "", "", fmt.Errorf("could not run %q (install Claude Code and ensure it is on PATH): %w", name, err)
+	return "", "", fmt.Errorf("could not run %q (install %s and ensure it is on PATH): %w", name, cliProduct(name), err)
+}
+
+// cliProduct names the product behind a subscription CLI binary, for the
+// "install X" hint; anything unrecognized is Claude Code (the original).
+func cliProduct(bin string) string {
+	b := strings.ToLower(filepath.Base(bin))
+	switch {
+	case strings.Contains(b, "codex"):
+		return "Codex CLI"
+	case strings.Contains(b, "gemini"):
+		return "Gemini CLI"
+	}
+	return "Claude Code"
 }
 
 // cliProvider is a Provider that performs one completion per call by shelling to
@@ -165,6 +188,8 @@ func execRunEnv(ctx context.Context, dir, name string, args []string, stdin stri
 // answering; nil agentTools is the original one-shot text generator, byte-for-
 // byte, used by ask/compile/diagram.
 type cliProvider struct {
+	kind        string // ModeClaudeCLI (also ""), ModeCodexCLI or ModeGeminiCLI
+	model       string // -m for codex/gemini; never forced on claude
 	bin         string
 	run         runner
 	dir         string   // working directory for the CLI (project root in agentic mode)
@@ -222,6 +247,12 @@ func isUnknownFlag(err error) bool {
 // headless permission denials surface — is echoed to the server log, so an
 // attempt outside the allowlist is visible (criterion 4).
 func (p *cliProvider) Complete(ctx context.Context, prompt string) (string, error) {
+	switch p.kind {
+	case ModeCodexCLI:
+		return p.completeCodex(ctx, prompt)
+	case ModeGeminiCLI:
+		return p.completeGemini(ctx, prompt)
+	}
 	base := []string{"-p", "--output-format", "text"}
 	args := base
 	agentic := len(p.agentTools) > 0
@@ -244,4 +275,90 @@ func (p *cliProvider) Complete(ctx context.Context, prompt string) (string, erro
 		log.Printf("claude-cli stderr: %s", truncate([]byte(s), maxOutputBytes))
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// scratchDir is the empty directory the Codex and Gemini one-shots run in, so
+// the CLI inherits nothing from the project (no AGENTS.md, no GEMINI.md).
+func scratchDir() (string, func(), error) {
+	dir, err := os.MkdirTemp("", "cerne-cli-")
+	if err != nil {
+		return "", nil, err
+	}
+	return dir, func() { os.RemoveAll(dir) }, nil
+}
+
+// completeCodex runs `codex exec` (R-0093): prompt on stdin ("-"), the final
+// message written by the CLI to the -o file, read-only sandbox, no session
+// persisted, in an empty scratch dir.
+func (p *cliProvider) completeCodex(ctx context.Context, prompt string) (string, error) {
+	dir, cleanup, err := scratchDir()
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrCodexCLI, err)
+	}
+	defer cleanup()
+	outFile := filepath.Join(dir, "answer.txt")
+	args := []string{"exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only", "-o", outFile}
+	if p.model != "" {
+		args = append(args, "-m", p.model)
+	}
+	args = append(args, "-")
+	if _, _, err := p.run(ctx, dir, p.bin, args, prompt); err != nil {
+		hint := "run 'codex login' (subscription) or use another mode"
+		if strings.Contains(err.Error(), "install Codex CLI") {
+			hint = "install Codex CLI and ensure it is on PATH"
+		}
+		return "", fmt.Errorf("%w: failed to call Codex CLI (codex exec): %w — %s", ErrCodexCLI, err, hint)
+	}
+	b, err := os.ReadFile(outFile)
+	if err != nil || len(bytes.TrimSpace(b)) == 0 {
+		return "", fmt.Errorf("%w: codex exec returned no answer — run 'codex login' or check the Codex CLI version", ErrCodexCLI)
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+var exitStatusRE = regexp.MustCompile(`exit status (\d+)`)
+
+// geminiReply is the part of `gemini --output-format json` cerne reads.
+type geminiReply struct {
+	Response string `json:"response"`
+	Error    *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// completeGemini runs `gemini` headless (R-0094): prompt on stdin, JSON
+// output, plan approval mode (read-only), in an empty scratch dir. Exit 42 is
+// invalid input; any other failure is read as an API/login problem.
+func (p *cliProvider) completeGemini(ctx context.Context, prompt string) (string, error) {
+	dir, cleanup, err := scratchDir()
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrGeminiCLI, err)
+	}
+	defer cleanup()
+	args := []string{"--output-format", "json", "--approval-mode", "plan"}
+	if p.model != "" {
+		args = append(args, "-m", p.model)
+	}
+	out, _, err := p.run(ctx, dir, p.bin, args, prompt)
+	if err != nil {
+		hint := "run gemini and sign in (or set GEMINI_API_KEY), then retry"
+		if strings.Contains(err.Error(), "install Gemini CLI") {
+			hint = "install Gemini CLI and ensure it is on PATH"
+		} else if m := exitStatusRE.FindStringSubmatch(err.Error()); m != nil && m[1] == "42" {
+			hint = "invalid input: the prompt or the model name was rejected"
+		}
+		return "", fmt.Errorf("%w: failed to call Gemini CLI: %w — %s", ErrGeminiCLI, err, hint)
+	}
+	var r geminiReply
+	raw := strings.TrimSpace(out)
+	if i, j := strings.Index(raw, "{"), strings.LastIndex(raw, "}"); i >= 0 && j > i {
+		raw = raw[i : j+1] // tolerate warnings printed around the JSON
+	}
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		return "", fmt.Errorf("%w: unreadable gemini output (expected JSON with a response field)", ErrGeminiCLI)
+	}
+	if r.Error != nil && r.Error.Message != "" {
+		return "", fmt.Errorf("%w: %s", ErrGeminiCLI, r.Error.Message)
+	}
+	return strings.TrimSpace(r.Response), nil
 }

@@ -53,6 +53,10 @@ func ConfiguredProviders(cfg project.LLMConfig) []string {
 		return nil
 	case ModeClaudeCLI:
 		return []string{providerAnthropic}
+	case ModeCodexCLI:
+		return []string{providerOpenAI}
+	case ModeGeminiCLI:
+		return []string{"gemini"}
 	}
 	return []string{cfg.WithDefaults().Provider}
 }
@@ -66,12 +70,17 @@ func ConfiguredProviders(cfg project.LLMConfig) []string {
 //     (F-0323; any other value errors, naming it), reads the API key from os.Getenv(cfg.KeyEnv)
 //     (ErrAPIKeyMissing when empty), and returns an *httpProvider.
 func NewProvider(cfg project.LLMConfig) (Provider, error) {
+	rawModel := cfg.Model // WithDefaults fills an Anthropic model that codex/gemini must not see
 	cfg = cfg.WithDefaults()
-	switch ResolveMode(cfg.Mode) {
+	switch mode := ResolveMode(cfg.Mode); mode {
 	case ModeDelegation:
 		return nil, ErrNoProviderForDelegation
 	case ModeClaudeCLI:
 		return &cliProvider{bin: cfg.ClaudeBin, run: execRun}, nil
+	case ModeCodexCLI:
+		return &cliProvider{kind: mode, bin: "codex", model: rawModel, run: execRun}, nil
+	case ModeGeminiCLI:
+		return &cliProvider{kind: mode, bin: "gemini", model: rawModel, run: execRun}, nil
 	}
 	if cfg.Provider != providerAnthropic && cfg.Provider != providerOpenAI {
 		return nil, fmt.Errorf("LLM provider %q not supported (only %q, %q)", cfg.Provider, providerAnthropic, providerOpenAI)
@@ -249,7 +258,7 @@ type modelsListResponse struct {
 // without touching the network. One page of up to 1000 models.
 func ListModels(ctx context.Context, cfg project.LLMConfig) ([]models.Entry, error) {
 	cfg = cfg.WithDefaults()
-	if mode := ResolveMode(cfg.Mode); mode == ModeDelegation || mode == ModeClaudeCLI {
+	if mode := ResolveMode(cfg.Mode); mode == ModeDelegation || mode == ModeClaudeCLI || mode == ModeCodexCLI || mode == ModeGeminiCLI {
 		return nil, fmt.Errorf("%w (mode %s)", ErrNoListing, mode)
 	}
 	if cfg.Provider != providerAnthropic {
