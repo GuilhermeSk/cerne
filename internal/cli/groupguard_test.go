@@ -110,7 +110,7 @@ func TestRootUnknownPointsAtGuide(t *testing.T) { // F-0398 criterion 7, root pa
 		t.Fatalf("a near miss keeps cobra's suggestion: err = %v", err)
 	}
 	out, err := execCerne(t)
-	if err != nil || !strings.Contains(out, "Available Commands") {
+	if err != nil || !strings.Contains(out, "Start here:") {
 		t.Fatalf("bare cerne still prints help: err=%v", err)
 	}
 }
