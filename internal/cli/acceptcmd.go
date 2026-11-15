@@ -27,8 +27,8 @@ func newFeatureAcceptCmd(dir *string) *cobra.Command {
 		Long: "Moves an implemented (\"Ready\") feature to done: the human validation gate at the end of the " +
 			"lifecycle (F-0131). Under the default human gate, an agent actor (CERNE_ACTOR=agent) is refused — " +
 			"only a human accepts. --all-implemented migrates every implemented feature at once (requires --reason).",
-		Example: "  cerne feature accept F-0001 --reason \"validado em homologação\"\n" +
-			"  cerne feature accept --all-implemented --reason \"migração do legado\"",
+		Example: "  cerne feature accept F-0001 --reason \"validated in staging\"\n" +
+			"  cerne feature accept --all-implemented --reason \"legacy migration\"",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runFeatureAccept(cmd, *dir, args, reason, allImplemented)
