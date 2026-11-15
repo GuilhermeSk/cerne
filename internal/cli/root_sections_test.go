@@ -2,8 +2,28 @@ package cli
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
+
+func TestTopLevelHelpListsSectionsInOrder(t *testing.T) {
+	out, err := execCerne(t, "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := -1
+	for _, title := range []string{
+		"Start here:", "Read the state:", "Author and move the work:",
+		"Sync with the backend:", "Agents and coordination:",
+		"Administration and housekeeping:", "Additional Commands:",
+	} {
+		i := strings.Index(out, title)
+		if i <= last {
+			t.Fatalf("%q at %d, want after %d:\n%s", title, i, last, out)
+		}
+		last = i
+	}
+}
 
 func TestEveryTopLevelCommandHasASection(t *testing.T) {
 	root := Root()
