@@ -54,7 +54,7 @@ var (
 	// PENDENTE counts only on an acceptance line (list item or table row that
 	// names a "critério"), never in loose prose.
 	pendingWord = regexp.MustCompile(`^\s*(?:[-*+]|\d+[.)]|\|).*crit[ée]rio.*\bPENDENTE\b`)
-	// The pendings sections the hub's results use (F-0887): "Débitos e follow-ups"
+	// The pendings sections a client project's results use (F-0887): "Débitos e follow-ups"
 	// already matches by Débitos; a title merely containing "débito" would match prose.
 	// Singular, bold and numbered titles ("## Pendência", "## **Débitos**",
 	// "## 5. Débitos") open it too.

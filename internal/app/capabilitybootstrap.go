@@ -51,7 +51,7 @@ func proposalDir(projDir string) string {
 }
 
 // specExcerptLimit bounds how much of each spec feeds the prompt — hundreds of
-// features (hub: 465) with full specs would blow the context for nothing.
+// features (a large client project: 465) with full specs would blow the context for nothing.
 const specExcerptLimit = 300
 
 // CapabilityBootstrapPrompt builds the pt-BR prompt (doc-authoring convention)

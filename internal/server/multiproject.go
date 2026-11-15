@@ -89,7 +89,7 @@ func (s *MultiServer) mux() http.Handler {
 				return
 			}
 			// The clone is created once, at register time; without this the
-			// served docs stay pinned to that day's SHA forever (hub F-0517).
+			// served docs stay pinned to that day's SHA forever (client project F-0517).
 			// Throttled to one fetch per TTL per clone.
 			refreshProject(repoDir)
 			h(w, r, repoDir, projDir, pid)

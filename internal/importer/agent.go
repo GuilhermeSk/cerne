@@ -24,7 +24,7 @@ var ErrInvalidPlan = errors.New("invalid plan")
 // PlanItem is one entity the agent proposes from an arbitrary doc tree. It is
 // the machine contract between the mapping agent (which classifies sources) and
 // cerne (which validates and persists): the agent fills it, cerne is the
-// authority on whether it is legal. Unlike a hub-import Candidate, the Body is
+// authority on whether it is legal. Unlike a case-folder Candidate, the Body is
 // synthesized markdown (not a file copy), so agent import works on any layout.
 type PlanItem struct {
 	Kind    string   `json:"kind"`              // feature|decision|reference|runbook|note
@@ -101,7 +101,7 @@ var ignoredDirs = map[string]bool{
 // CollectSources walks root and returns its documentation sources for
 // agent-assisted mapping: every markdown file plus canonical extensionless
 // roots (HISTORY/CHANGELOG/README/CLAUDE), skipping ignoredDirs. This is what
-// makes discovery independent of the hub convention — any layout yields its
+// makes discovery independent of the case-folder convention — any layout yields its
 // docs. Order is deterministic (RelPath ascending) so the prompt is stable.
 func CollectSources(root string) ([]Source, error) {
 	var sources []Source
@@ -221,7 +221,7 @@ func capContent(content string) string {
 // ApplyPlan persists each validated plan item into the backend at repoDir: a
 // sequential id per kind, the entity JSON, a "<kind>.imported" event, and the
 // synthesized body as the entity's content document with cerne_id/imported_from
-// frontmatter (so re-runs dedup via ImportedSources). Unlike the hub Apply it
+// frontmatter (so re-runs dedup via ImportedSources). Unlike the case-folder Apply it
 // copies no files and rewrites no links — the body is authored against backend
 // ids. Items are expected pre-validated (see ValidatePlan); an unknown kind
 // still aborts. No git interaction happens here.
@@ -263,7 +263,7 @@ func ApplyPlan(repoDir string, items []PlanItem, actor string) (Summary, error) 
 }
 
 // FilterPlanItems drops items already represented in the backend so
-// re-ingesting a plan is idempotent — reusing the very predicates the hub
+// re-ingesting a plan is idempotent — reusing the very predicates the case-folder
 // import uses: an item whose Source was already imported (imported_from, via
 // ImportedSources) and a feature whose title already matches a registered
 // feature (the F-0045 title guard, via ExistingFeatureTitles + normalizeTitle).

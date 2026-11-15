@@ -13,7 +13,7 @@ import (
 var now = time.Now
 
 // indexStaleAfter is the age past which search and ask warn (F-0394). Fixed:
-// it is the limit the hub's session start already uses.
+// it is the limit a client project's session start already uses.
 const indexStaleAfter = 24 * time.Hour
 
 // indexSyncedAt reads when the index was last synced, nil when unknown. A read

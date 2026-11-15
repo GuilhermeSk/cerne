@@ -15,7 +15,7 @@ import (
 
 // handleConventionsExport renders the active notes tagged with both the
 // "convention" and "platform" components as one markdown document, for
-// runtime distribution to external project harnesses (hub F-0471/F-0474).
+// runtime distribution to external project harnesses (client project F-0471/F-0474).
 // Consumers filter by the per-section components marker, so notes without
 // the platform component never leave this server. Sections are ordered by
 // note ID (LoadAllNotes order) so the output — and its ETag — are stable
@@ -54,7 +54,7 @@ func handleConventionsExport(w http.ResponseWriter, repoDir string) {
 	// the rendered catalog changes, so a clone frozen at an old commit looks
 	// identical to a live one. These say which commit the answer came from and
 	// when it was made, which is what makes staleness visible downstream
-	// (hub F-0517 criterion 3). Best-effort: a repo without git still exports.
+	// (client project F-0517 criterion 3). Best-effort: a repo without git still exports.
 	if sha, when, err := gitback.HeadCommit(repoDir); err == nil {
 		w.Header().Set("X-Cerne-Catalog-Sha", sha)
 		w.Header().Set("X-Cerne-Catalog-Time", when.UTC().Format(time.RFC3339))

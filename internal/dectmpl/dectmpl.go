@@ -5,7 +5,7 @@
 // never drift — the third member of the spectmpl/plantmpl family.
 //
 // The shape follows Michael Nygard's classic ADR spine (Contexto → Decisão →
-// Consequências), extended with the Alternativas the hub corpus relies on and an
+// Consequências), extended with the Alternativas a client corpus relies on and an
 // Implementação e relações section that anchors the decision in real code and
 // links the features/ADRs it touches. The section order is load-bearing:
 // Contexto and Decisão sit at the top (the most decision-bearing content, where

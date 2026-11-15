@@ -9,7 +9,7 @@ import (
 )
 
 // Link rewriting turns the cross-references of imported docs — written against
-// the original hub tree — into links that resolve in the cerne backend:
+// the original source tree — into links that resolve in the cerne backend:
 //
 //   - Obsidian wikilinks [[slug]] / [[slug#h]] / [[slug|alias]] and inline
 //     markdown links [t](../old/path.md) become relative links to the new
@@ -26,12 +26,12 @@ var (
 	mdLinkRx  = regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`)
 	fenceRx   = regexp.MustCompile("^\\s*(```|~~~)")
 	lineNumRx = regexp.MustCompile(`:(\d+)$`)
-	// codeDirRx marks a target pointing into a source tree (hub monorepo roots
+	// codeDirRx marks a target pointing into a source tree (monorepo roots
 	// plus subsystem-local api/web folders).
 	codeDirRx = regexp.MustCompile(`(^|/)(apps|packages|infra|scripts|config|certs|api|web|web-shared)/`)
 )
 
-// LinkIndex resolves an original-hub link target to the new content path of
+// LinkIndex resolves an original-tree link target to the new content path of
 // the entity it now lives in.
 type LinkIndex struct {
 	byPath map[string]string   // original path without extension -> content rel (slash)
@@ -131,7 +131,7 @@ func (x *LinkIndex) resolve(fromSource, target string) (string, bool) {
 // PermalinkBase turns a source-tree path into a blob permalink. A zero value
 // (empty BlobBase) disables code-reference rewriting.
 type PermalinkBase struct {
-	BlobBase string // e.g. https://gitlab.com/acme/hub/-/blob/<sha>
+	BlobBase string // e.g. https://gitlab.com/acme/app/-/blob/<sha>
 	SrcRoot  string // source tree root, to verify the file still exists
 }
 
@@ -241,7 +241,7 @@ func (pb PermalinkBase) hubPath(fromSource, target string) string {
 }
 
 // rewriteLinks rewrites the cross-references in body. fromSource is the doc's
-// original hub path; fromContentRel is its new content rel path (its directory
+// original tree path; fromContentRel is its new content rel path (its directory
 // anchors the relative links). Original line endings are preserved.
 func rewriteLinks(body []byte, fromSource, fromContentRel string, idx *LinkIndex, pb PermalinkBase) []byte {
 	crlf := strings.Contains(string(body), "\r\n")

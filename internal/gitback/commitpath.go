@@ -16,7 +16,7 @@ import (
 // possibly a huge monorepo — WITHOUT scanning the worktree (F-0153): all
 // checks are directed (HEAD tree vs index, plus the target file's blob), so
 // the cost is O(tracked files' metadata), never O(hashing the working tree).
-// go-git's Worktree.Status took 80s+ per call on the hub monorepo and was
+// go-git's Worktree.Status took 80s+ per call on a large client monorepo and was
 // the measured cause of 113s-average snapshot phases; TestCommitPathAvoids-
 // WorktreeStatus guards against reintroducing it (plain wt.Add included —
 // it calls Status internally; AddWithOptions{SkipStatus} is the sanctioned

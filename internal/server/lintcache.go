@@ -9,7 +9,7 @@ import (
 	"github.com/henriquesakata/cerne/internal/telemetry"
 )
 
-// The full lint pass re-scans the backend (measured 4.9s average on the hub)
+// The full lint pass re-scans the backend (measured 4.9s average on a large project)
 // and the UI refetches it after every SSE change event. The cache is keyed by
 // backend HEAD (F-0153) — but every transition moves HEAD, so in a burst of
 // approvals a plain cache never hits (96 misses vs 3 hits measured, W-0014).

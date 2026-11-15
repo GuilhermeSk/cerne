@@ -14,7 +14,7 @@ func TestLockRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := Lock{
 		Version:  1,
-		Backend:  "https://github.com/henriquesakata/cerne-docs.git",
+		Backend:  "https://gitlab.com/acme/cerne-docs.git",
 		Snapshot: "0123456789abcdef0123456789abcdef01234567",
 	}
 	if err := SaveLock(dir, want); err != nil {

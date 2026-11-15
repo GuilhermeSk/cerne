@@ -31,7 +31,7 @@ func newImportCmd() *cobra.Command {
 		Use:   "import",
 		Short: "Import an existing documentation tree into the backend",
 		Long: "Imports an existing documentation tree. Without flags, it uses the " +
-			"Hub convention (deterministic). With --agent, it does an AI-assisted generic import of " +
+			"case-folder convention (docs/process/cases/NNNN_slug/, deterministic). With --agent, it does an AI-assisted generic import of " +
 			"any structure: with a callable LLM (a subscription CLI or an API key) it drafts the mapping " +
 			"plan itself; in delegation mode it emits a mapping prompt for the agent you already run; " +
 			"then 'cerne import --agent --ingest' validates and applies it (--yes).",
@@ -61,7 +61,7 @@ func runImport(cmd *cobra.Command, dir, root string, yes, agent, ingest bool) er
 		return fmt.Errorf("--root: %w", err)
 	}
 	// Agent path (F-0061) is fully gated behind --agent: without it, the
-	// deterministic hub import below runs exactly as before.
+	// deterministic case-folder import below runs exactly as before.
 	if agent {
 		if ingest {
 			return runImportAgentIngest(cmd, ctx, yes)
@@ -424,7 +424,7 @@ func runImportAgentIngest(cmd *cobra.Command, ctx projCtx, yes bool) error {
 }
 
 // printAgentPlan writes the agent-import dry-run report: per-kind totals
-// (notes included, unlike the hub printer), a small sample, and the --yes hint.
+// (notes included, unlike the case-folder printer), a small sample, and the --yes hint.
 func printAgentPlan(w io.Writer, items []importer.PlanItem, skipped int) {
 	counts := map[string]int{}
 	for _, it := range items {

@@ -35,7 +35,7 @@ type GauntletStats struct {
 
 // GauntletCostStats measures what the Gauntlet cost in this project (F-0390):
 // over every implemented or done feature whose stamped "## Custo" anchor
-// carries a critic or judge role (F-0384), their weighted tokens (the hub
+// carries a critic or judge role (F-0384), their weighted tokens (the client
 // weights of the process panel) and that spend's share of the feature's own.
 // It reads the anchors only — never the transcripts — so the approve check
 // stays cheap.
@@ -90,7 +90,7 @@ func GauntletCostStats(repoDir string) (GauntletStats, error) {
 	return out, nil
 }
 
-// Weighted is c in input-token units, by the hub weights (stats.Weighted).
+// Weighted is c in input-token units, by the client cost weights (stats.Weighted).
 func Weighted(c Counters) float64 {
 	return stats.Weighted([4]int64{c.Input, c.CacheCreation, c.CacheRead, c.Output})
 }

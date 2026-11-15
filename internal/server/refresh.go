@@ -10,7 +10,7 @@ import (
 
 // defaultPullTTL bounds how often a served project's clone is refreshed from
 // its backend. Five minutes keeps a freshly pushed note reaching a downstream
-// harness well inside the one-hour budget (hub F-0517 criterion 2) while a
+// harness well inside the one-hour budget (client project F-0517 criterion 2) while a
 // busy service pays at most one fetch per project per interval.
 const defaultPullTTL = 5 * time.Minute
 
@@ -53,7 +53,7 @@ func pullTTL() time.Duration {
 // refreshProject brings repoDir up to date with its backend, at most once per
 // TTL per clone. It exists because `cerne serve` clones a project exactly once
 // (ensureProjectClone, on register) and never advanced it again: the served
-// catalog stayed pinned at the SHA of registration day (hub F-0517).
+// catalog stayed pinned at the SHA of registration day (client project F-0517).
 //
 // The refresh is synchronous on purpose — the read that follows a push must
 // see the push, not the one after it. It is also best-effort: a failed fetch
