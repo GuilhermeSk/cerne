@@ -16,7 +16,7 @@ const titleWeight = 4.0
 
 // maxCoverageTerms caps the per-term MATCH queries of the coverage ranking.
 // ponytail: the OR query reads the record of every matching row (~200 ms for
-// 3.3k rows on the acme-hub index); a compact rowid->entity side table would
+// 3.3k rows on a large client project's index); a compact rowid->entity side table would
 // cut that if search latency starts to matter.
 const maxCoverageTerms = 8
 

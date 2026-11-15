@@ -24,7 +24,7 @@ const (
 	// bootstrap and the score intervals are both conservative.
 	guardZ     = 2.241402727604947 // two-sided 97.5% normal quantile
 	guardLevel = 0.975
-	// Weights relative to one input token — the hub's custo-agentes.mjs, every
+	// Weights relative to one input token — a client project's custo-agentes.mjs, every
 	// cache write at the 5-minute rate: the F-0309 anchor does not split it.
 	weightInput, weightCacheCreation, weightCacheRead, weightOutput = 1.0, 1.25, 0.1, 5.0
 )

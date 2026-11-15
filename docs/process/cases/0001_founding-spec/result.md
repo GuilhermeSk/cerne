@@ -26,7 +26,7 @@ The entire v1 cut of the spec, across the 7 milestones of plan.md:
 
 ## Real-world acceptance (spec criteria)
 
-Run against the **real Hub** (~1,029 md files):
+Run against the **real hub** (~1,029 md files):
 
 1. **`cerne import` of the hub** ✅ — 308 features + 45 ADRs + 66 references in 37s (dry-run in 4.4s); states: 285 implemented, 15 candidate, 6 in_development, 2 superseded.
 2. **Context reduction** ✅ — `.docs/` materialized with **138 files vs 1,029 (-87%)**; only 21 active features have materialized content.
@@ -66,7 +66,7 @@ Run against the **real Hub** (~1,029 md files):
 
 ## Suggested next steps
 
-1. Immediate dogfooding: `cerne import` of the cerne repo itself + the hub into a real backend (GitLab `acme/hub-docs`), and start managing cerne's cases through cerne.
+1. Immediate dogfooding: `cerne import` of the cerne repo itself + the hub into a real backend (a private GitLab repository), and start managing cerne's cases through cerne.
 2. Case 0002: historical entity registry (open item 1) — fully closes the Bills criterion.
 3. Case 0003: `cerne compile`/`ask` (v1.5, pluggable LLM).
 4. Release pipeline (goreleaser or GitLab CI): win/mac/linux binaries + UI built in CI.

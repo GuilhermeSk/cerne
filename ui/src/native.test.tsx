@@ -19,7 +19,7 @@ const live = vi.hoisted(() => {
   let state: Live = {
     projects: [
       { pid: 'p1', name: 'cerne' },
-      { pid: 'p2', name: 'Hub' },
+      { pid: 'p2', name: 'Acme Hub' },
     ],
     activePid: 'p1',
     setActivePid: (pid: string) => picks.push(pid),
@@ -225,7 +225,7 @@ describe('notificações nativas (F-0161)', () => {
     await waitFor(() => expect(FakeNotification.instances).toHaveLength(1))
     const n = FakeNotification.instances[0]
     expect(api.eventsFor).toHaveBeenCalledWith('p2')
-    expect(n.title).toContain('Hub')
+    expect(n.title).toContain('Acme Hub')
     expect(n.options.tag).toBe('cerne-p2')
   })
 

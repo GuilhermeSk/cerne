@@ -100,8 +100,8 @@ describe('buildNativePayload', () => {
 
   // C2: título sempre nomeia o projeto; evento único → corpo entidade + ação.
   it('evento único de ciência → título do projeto, corpo entidade+ação, sem requireInteraction', () => {
-    const p = buildNativePayload([info('1')], 'Hub', labels, typeLabel)!
-    expect(p.title).toBe('Hub — cerne')
+    const p = buildNativePayload([info('1')], 'Acme Hub', labels, typeLabel)!
+    expect(p.title).toBe('Acme Hub — cerne')
     expect(p.body).toBe('F-0001 aprovada')
     expect(p.requireInteraction).toBe(false)
     expect(p.single?.id).toBe('1')

@@ -3,7 +3,7 @@
 #
 # docs/process/cases/ is frozen history. New documentation is authored
 # cerne-native (cerne feature new -> cerne pull -> fill .docs/current/features/
-# F-NNNN/ -> cerne push -> approve/start/complete), like the hub. Editing an
+# F-NNNN/ -> cerne push -> approve/start/complete). Editing an
 # EXISTING case is still allowed (its folder already exists on disk).
 #
 # PreToolUse hook (matcher Write). Inspects ONLY the Write target path

@@ -22,7 +22,7 @@ import (
 //
 //	Pré-condição S11: registro F-0869        the entity exists in the backend
 //	Pré-condição S11: result F-0869          the feature has a result with content
-//	Pré-condição S11: mr acme/hub!2150 merged   the MR is in that state on the forge
+//	Pré-condição S11: mr acme/app!2150 merged    the MR is in that state on the forge
 //	Pré-condição S11: shell verde em produção     anything else: manual
 //
 // The step is the S<n> token on the line itself; without one the precondition

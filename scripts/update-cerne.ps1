@@ -24,7 +24,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Repo = 'C:\development\workspaces\acme\cerne',
+  [string]$Repo = (Split-Path -Parent $PSScriptRoot),
   [ValidateSet('main', 'latest')]
   [string]$Ref = 'main'
 )

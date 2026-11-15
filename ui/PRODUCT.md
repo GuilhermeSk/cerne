@@ -118,7 +118,6 @@ No logo, wordmark, or brand asset set exists yet. Do not fabricate one.
 - Real production data: this repo's own cerne backend (`cerne-docs`) — a live
   roster of features, decisions, notes, events. Any screen can be designed
   against true content, never lorem ipsum.
-- First external client: the **Hub**, dogfooding against `hub-docs`.
 - The founding spec and result live at
   `docs/process/cases/0001_founding-spec/` (frozen history).
 - **Absent — must not be invented:** customer logos, testimonials, pricing,
@@ -145,9 +144,6 @@ No logo, wordmark, or brand asset set exists yet. Do not fabricate one.
 
 ## Open Decisions
 
-- **Audience breadth is undecided.** CLAUDE.md describes cerne as
-  "open-source-in-potential." Whether it is published publicly or stays internal
-  to Acme has **not** been decided. Consequence: no public-facing marketing
-  surface, landing page, or external-audience voice should be designed or
-  assumed until this is settled. Record it as open; do not resolve it by
-  inference.
+- **Audience is public.** cerne is an open-source (Apache-2.0) personal project
+  of its author, published on GitHub. Public-facing surfaces may assume an
+  external audience; still never invent the evidence listed as absent above.

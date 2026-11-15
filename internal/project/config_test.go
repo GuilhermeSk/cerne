@@ -14,7 +14,7 @@ func TestConfigRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := Config{
 		ProjectID:    "cerne",
-		Backend:      "https://github.com/henriquesakata/cerne-docs.git",
+		Backend:      "https://gitlab.com/acme/cerne-docs.git",
 		DefaultScope: "core",
 	}
 	if err := SaveConfig(dir, want); err != nil {

@@ -23,7 +23,7 @@ import (
 // component metric, in any state, as markers. A delivery with no anchor (or an
 // all-zero one) is excluded and counted. Read-only. now decides the pending
 // escaped guard.
-// ponytail: reads every completed result per call (~600 small files on the hub); an index if the panel gets slow.
+// ponytail: reads every completed result per call (~600 small files on a large project); an index if the panel gets slow.
 func ProcessPerf(repoDir string, now time.Time) (stats.ProcessReport, error) {
 	events, err := store.ReadEvents(repoDir)
 	if err != nil {

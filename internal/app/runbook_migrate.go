@@ -18,8 +18,8 @@ import (
 // mdLinkRx matches an inline markdown link [text](target).
 var mdLinkRx = regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`)
 
-// runbookSourcePrefix marks the imported_from of a doc that came from the hub's
-// runbooks tree. References with this prefix were imported before the runbook
+// runbookSourcePrefix marks the imported_from of a doc that came from a client
+// project's runbooks tree. References with this prefix were imported before the runbook
 // entity existed (F-0040); the migration reclassifies them as runbooks.
 const runbookSourcePrefix = "docs/runbooks/"
 

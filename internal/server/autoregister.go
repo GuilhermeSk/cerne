@@ -12,7 +12,7 @@ const serveProjectsEnv = "CERNE_SERVE_PROJECTS"
 // configuredBackends parses CERNE_SERVE_PROJECTS — "pid=<git url>" entries
 // separated by commas or whitespace, e.g.
 //
-//	acme-hub=https://user:token@gitlab.com/acme/hub-docs.git
+//	acme=https://user:token@git.example.com/acme/docs.git
 //
 // Only the FIRST "=" splits, so a credentialed URL carrying "=" in its query
 // survives. Malformed entries are skipped rather than failing the service:

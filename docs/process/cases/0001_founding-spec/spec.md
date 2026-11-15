@@ -6,13 +6,13 @@ tags: #spec #cerne #founding #docs-as-code #ai-agents
 
 **Status:** Done — v1 shipped (v0.2.0, 2026-06-12); see [result.md](result.md)
 **Type:** Founding spec — defines the product, the architecture, and the v1 cut.
-**Origin:** Brainstorming on 2026-06-12, driven by a real pain in the Hub: AI agents getting lost in historical documentation and citing structures that no longer exist.
+**Origin:** Brainstorming on 2026-06-12, driven by a real pain in a large product codebase ("the hub" below): AI agents getting lost in historical documentation and citing structures that no longer exist.
 
 ---
 
 ## Problem
 
-Software projects developed with AI agents accumulate **append-only** documentation: specs, plans, results, ADRs, and notes keep growing, but nothing mechanically distinguishes what is **current** from what is **history**. Consequences observed in the reference project (Hub, ~6 months of intensive development with agents):
+Software projects developed with AI agents accumulate **append-only** documentation: specs, plans, results, ADRs, and notes keep growing, but nothing mechanically distinguishes what is **current** from what is **history**. Consequences observed in the reference project (the hub, ~6 months of intensive development with agents):
 
 1. **Scale** — ~1,000 markdown files (786 in `docs/`, 226 in `apps/*/docs/`), including 241 cross-app cases and 46 ADRs. No agent can (or should) read all of that to get context.
 2. **State is prose, not data** — "which features were created, which were implemented, which are pending?" has no answer without reading dozens of files and interpreting free text.
@@ -42,7 +42,7 @@ The problem is not specific to the hub: **any project that uses AI in developmen
 
 Audiences: teams developing with agents (Claude Code, Cursor, etc.) **and** non-technical/hobbyist creators — for them, the tool's opinionated flow IS the methodological guide ("your spec was approved; the next step is the plan").
 
-The Hub is the first client (dogfooding via `cerne import`); the Acme platform's Studio will, in the future, be a client of the cerne API for platform projects. cerne **does not depend** on the platform.
+The hub is the first client (dogfooding via `cerne import`). cerne **does not depend** on the platform.
 
 ---
 
@@ -178,13 +178,13 @@ The `docs.lock` fixes the biggest risk of the "docs outside git" model: without 
 |---|---|---|
 | CLI: init, import, pull, push, status, lifecycle, lint, search | `compile` + `ask` (pluggable LLM) | MCP server |
 | Git backend + lock + materialization | | Self-hosted server / SaaS |
-| UI: kanban + spec review + approval w/ Excalidraw | | Studio integration (Acme) |
+| UI: kanban + spec review + approval w/ Excalidraw | | Studio integration |
 
 ---
 
 ## Success criteria
 
-1. **Real acceptance test — `cerne import` of the Hub:** imports 241 cases + 46 ADRs proposing a correct mapping; the lint flags, unassisted, the references to Bills/Investments as superseded entities (the real `features.md` bug).
+1. **Real acceptance test — `cerne import` of the hub:** imports 241 cases + 46 ADRs proposing a correct mapping; the lint flags, unassisted, the references to Bills/Investments as superseded entities (the real `features.md` bug).
 2. **Context reduction:** an agent in the hub goes from ~1,000 visible files to dozens (active features + active ADRs + current references). The "agent cites Bills as a live module" case dies by construction.
 3. **`cerne status` answers in 1 command** what today requires reading dozens of files.
 4. **E2e golden path:** `init → feature new → push spec → approve → pull` works on a pristine repo in < 5 minutes, with no LLM and no infra beyond a git repo for the backend.

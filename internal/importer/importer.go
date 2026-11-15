@@ -1,4 +1,4 @@
-// Package importer onboards an existing documentation tree (Hub
+// Package importer onboards an existing documentation tree (case-folder
 // convention: case folders, ADRs, runbooks) into a cerne backend. Scan is a
 // pure read-only pass producing candidates; Apply persists them.
 package importer
@@ -49,7 +49,7 @@ type Summary struct {
 	ByState    map[string]int
 }
 
-// Scan walks rootDir for the Hub documentation convention and returns
+// Scan walks rootDir for the case-folder documentation convention and returns
 // candidates in deterministic order: root cases by number, then per-app
 // cases (app alphabetical, then number), then ADRs by number, then
 // references alphabetical by path. Case folders without a spec.md are
