@@ -1,3 +1,6 @@
+## Q: Which command do I run first? I just installed cerne.
+Read the top-level help (run cerne with no arguments): the first section, "Start here", holds the on-ramp. `cerne init` sets up a project (or `cerne demo` creates a sample one to explore), `cerne ui` opens the dashboard, `cerne import` brings in an existing documentation tree, and `cerne guide "<what you want to do>"` answers any later question. The other sections group the rest by journey: read the state, author and move the work, sync with the backend, agents and coordination, administration.
+
 ## Q: How do I close a feature? One command or two?
 Fill the result, `cerne push`, then `cerne feature complete <F-id>`: it moves the feature to implemented and stamps its token cost (`## Custo`) in the same command, the same stamp as `cerne cost <F-id> --stamp`. If the transition refuses, nothing is stamped. If the stamp cannot be made it prints `warning: cost not stamped: …` and still exits 0, because the feature is already implemented: when no session on this machine is bound to it, run `cerne cost <F-id> --stamp` from the machine that ran the work. `--no-stamp` skips the stamp. The output ends with one Next step block: the human `cerne feature accept <F-id>` and, when the feature has a PR link, the delivery line. Marking the PR ready for review is not done by cerne.
 
