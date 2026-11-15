@@ -26,12 +26,16 @@ jobs:
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: 'dist/*'
+      # --generate-notes lists the pull requests merged since the previous tag,
+      # under the install line: a pull request title is a release-notes line,
+      # so the template asks for a user-readable Conventional Commit title.
       - name: publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME" dist/*
           --title "cerne $GITHUB_REF_NAME"
+          --generate-notes
           --notes "Cross-compiled binaries (linux and darwin amd64/arm64, windows amd64) and SHA256SUMS. Install: https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/INSTALL.md"
       # The workflow token cannot write to another repository: HOMEBREW_TAP_TOKEN
       # is a fine-grained token with contents:write on henriquesakata/homebrew-tap
