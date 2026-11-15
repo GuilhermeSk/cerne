@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -56,6 +57,15 @@ func TestStartSectionIsTheOnRamp(t *testing.T) {
 	for _, not := range []string{"retire", "forget-alias", "serve", "doctor", "lock", "guard"} {
 		if slices.Contains(got, not) {
 			t.Errorf("start section must not hold %q: %v", not, got)
+		}
+	}
+}
+
+func TestTopLevelShortsCiteNoInternalID(t *testing.T) {
+	re := regexp.MustCompile(`\b[FDN]-\d{4}\b`)
+	for _, c := range Root().Commands() {
+		if re.MatchString(c.Short) {
+			t.Errorf("%q short cites an internal id: %q", c.Name(), c.Short)
 		}
 	}
 }

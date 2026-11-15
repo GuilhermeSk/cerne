@@ -29,7 +29,7 @@ var guardIDRe = regexp.MustCompile(`(?i)\b[fte]-\d{4,}\b`)
 func newGuardCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "guard",
-		Short: "Commit-time guardrails enforced by the installed git hooks (F-0225)",
+		Short: "Commit-time guardrails enforced by the installed git hooks",
 	}
 	cmd.AddCommand(newGuardCommitMsgCmd())
 	return cmd

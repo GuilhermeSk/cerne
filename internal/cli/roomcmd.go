@@ -45,7 +45,7 @@ func addRoomFlags(cmd *cobra.Command, dir *string, port *int) {
 func newRoomCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "room",
-		Short: "Talk to the local war room (F-0211): open/join/say/read/close/list",
+		Short: "Talk to the local war room: open/join/say/read/close/list",
 	}
 	cmd.AddCommand(newRoomOpenCmd())
 	cmd.AddCommand(newRoomJoinCmd())

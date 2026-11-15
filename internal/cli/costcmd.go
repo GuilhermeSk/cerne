@@ -30,7 +30,7 @@ func newCostCmd() *cobra.Command {
 	var asJSON, stamp bool
 	cmd := &cobra.Command{
 		Use:   "cost [<id>]",
-		Short: "Tokens an entity consumed, read from the Claude Code session transcripts (F-0309)",
+		Short: "Tokens an entity consumed, read from the Claude Code session transcripts",
 		Long: "Reads the four real token counters (input, cache_creation, cache_read, output) of every " +
 			"assistant message in the Claude Code transcripts of the sessions bound to <id>, and attributes " +
 			"each message to the binding in force at its timestamp (the bind hook records one ledger line " +
