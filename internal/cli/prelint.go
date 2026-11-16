@@ -11,7 +11,7 @@ import (
 )
 
 // copyTree is a variable so a test can prove the no-edits path never copies (F-0393).
-var copyTree = copyTreeFiles
+var copyTree = linkTreeFiles
 
 // stagedLintRoot assembles a backend-shaped tree for linting local edits without
 // touching the backend: it copies the cache clone's entities/, content/ and events/ (the
@@ -37,7 +37,12 @@ func stagedLintRoot(repoDir, projDir string, skipEmpty bool) (string, stagedEdit
 	if skipEmpty && len(docs) == 0 {
 		return "", stagedEdits{base: repoDir}, func() {}, nil
 	}
-	root, err := os.MkdirTemp("", "cerne-stagedlint-")
+	// Beside the clone, same volume, so hard links work (F-0404); os.TempDir
+	// only when the cache dir is not writable.
+	root, err := os.MkdirTemp(filepath.Dir(repoDir), "stagedlint-")
+	if err != nil {
+		root, err = os.MkdirTemp("", "cerne-stagedlint-")
+	}
 	if err != nil {
 		return "", stagedEdits{}, nil, err
 	}
@@ -60,6 +65,11 @@ func stagedLintRoot(repoDir, projDir string, skipEmpty bool) (string, stagedEdit
 	for _, d := range docs {
 		dst := filepath.Join(root, filepath.FromSlash(d.backendRel))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			cleanup()
+			return "", stagedEdits{}, nil, err
+		}
+		// dst may be a hard link to the clone's file: drop the link, never write through it.
+		if err := os.Remove(dst); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			cleanup()
 			return "", stagedEdits{}, nil, err
 		}
@@ -107,9 +117,11 @@ func diffFindings(staged, base []lint.Finding) (added, kept []lint.Finding, fixe
 	return added, kept, fixed
 }
 
-// copyTreeFiles recursively copies the directory src into dst. A missing src is a
-// no-op (a snapshot may lack a subdir, e.g. no content/ yet).
-func copyTreeFiles(src, dst string) error {
+// linkTreeFiles recursively mirrors the directory src into dst, hard-linking
+// each file and copying it when the link fails (another volume, a filesystem
+// without links). The linked tree is read-only for the caller: an edit must
+// os.Remove the destination first. A missing src is a no-op (a snapshot may lack a subdir, e.g. no content/ yet).
+func linkTreeFiles(src, dst string) error {
 	info, err := os.Stat(src)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -132,11 +144,14 @@ func copyTreeFiles(src, dst string) error {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		data, err := os.ReadFile(p)
-		if err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if os.Link(p, target) == nil {
+			return nil
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
 			return err
 		}
 		return os.WriteFile(target, data, 0o644)

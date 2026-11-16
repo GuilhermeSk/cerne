@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -535,4 +537,100 @@ func TestLintStagedPassesRunConcurrently(t *testing.T) {
 	if err != nil || !strings.Contains(out, "cerne: 1 findings fixed by your edits") {
 		t.Fatalf("output must match the sequential run, err=%v:\n%s", err, out)
 	}
+}
+
+// hashTree maps every file under dir (rel path) to its sha256.
+func hashTree(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || strings.Contains(p, string(filepath.Separator)+".git"+string(filepath.Separator)) {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		sum := sha256.Sum256(b)
+		out[rel] = hex.EncodeToString(sum[:])
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// F-0404 crit. 3: the staged tree hard-links the files the edit did not touch,
+// inside the project cache dir, and the edited file is a new file, not the link.
+func TestLintStagedTreeLinksUneditedFiles(t *testing.T) {
+	projDir, specPath := stagedDebtProject(t)
+	b, _ := os.ReadFile(specPath)
+	mustWrite(t, specPath, string(b)+"\nmais uma linha\n")
+	repoDir := mustCtxRepoDir(t, projDir)
+
+	root, edits, cleanup, err := stagedLintRoot(repoDir, projDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if edits.count != 1 {
+		t.Fatalf("want 1 edit, got %d", edits.count)
+	}
+	if filepath.Dir(root) != filepath.Dir(repoDir) || !strings.HasPrefix(filepath.Base(root), "stagedlint-") {
+		t.Fatalf("tree %s must live beside the clone %s as stagedlint-*", root, repoDir)
+	}
+	linked, copied := 0, 0
+	for _, sub := range []string{"entities", "content", "events"} {
+		_ = filepath.WalkDir(filepath.Join(repoDir, sub), func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			rel, _ := filepath.Rel(repoDir, p)
+			a, _ := os.Stat(p)
+			c, err := os.Stat(filepath.Join(root, rel))
+			if err != nil {
+				t.Errorf("%s missing from the tree", rel)
+				return nil
+			}
+			if os.SameFile(a, c) {
+				linked++
+			} else {
+				copied++
+				if rel != "content/features/F-0001/spec.md" {
+					t.Errorf("%s was copied, want a hard link", rel)
+				}
+			}
+			return nil
+		})
+	}
+	if linked == 0 || copied != 1 {
+		t.Fatalf("want every file linked but the edited one, linked=%d copied=%d", linked, copied)
+	}
+}
+
+// F-0404 crit. 4: lint --staged with an edit leaves every clone file byte
+// identical, including the one the edit overlays.
+func TestLintStagedNeverWritesTheClone(t *testing.T) {
+	projDir, specPath := stagedDebtProject(t)
+	repoDir := mustCtxRepoDir(t, projDir)
+	before := hashTree(t, repoDir)
+	b, _ := os.ReadFile(specPath)
+	mustWrite(t, specPath, string(b)+"\nmais uma linha\n")
+	if _, err := execCerne(t, "lint", "--staged", "--dir", projDir); err != nil {
+		t.Fatal(err)
+	}
+	if after := hashTree(t, repoDir); !reflect.DeepEqual(before, after) {
+		t.Fatalf("lint --staged changed the clone")
+	}
+}
+
+func mustCtxRepoDir(t *testing.T, projDir string) string {
+	t.Helper()
+	ctx, err := resolvePaths(projDir)
+	if err != nil {
+		t.Fatalf("resolvePaths: %v", err)
+	}
+	return ctx.repoDir
 }
