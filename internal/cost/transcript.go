@@ -134,9 +134,10 @@ type msg struct {
 	model     string
 	file      string // tfile.rel
 	sidechain bool
-	kind      string // the subagent's agentType (its .meta.json); "" when none
-	role      string // set by attribution (roleOf)
-	class     string // judge, critic or "": what the subagent's transcript says it was (classifyRole, F-0396)
+	kind      string   // the subagent's agentType (its .meta.json); "" when none
+	role      string   // set by attribution (roleOf)
+	class     string   // judge, critic or "": what the subagent's transcript says it was (classifyRole, F-0396)
+	cited     []string // the feature ids the subagent's first prompt cites (F-0411)
 	c         Counters
 }
 
@@ -219,9 +220,10 @@ func readSession(sess string, files []tfile) ([]msg, error) {
 		}
 		if subagent {
 			class := scan.classifyRole(kind)
+			cited := scan.cited
 			for i := first; i < len(msgs); i++ {
 				if msgs[i].file == f.rel {
-					msgs[i].class = class
+					msgs[i].class, msgs[i].cited = class, cited
 				}
 			}
 		}

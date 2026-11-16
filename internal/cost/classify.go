@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/henriquesakata/cerne/internal/gauntlet"
@@ -27,6 +28,9 @@ var (
 	askedA = regexp.MustCompile("(?:VEREDITO|VERDICT):[ \\t]*[*_`]*A(?:[^|\\w]|$)")
 	askedB = regexp.MustCompile("(?:VEREDITO|VERDICT):[ \\t]*[*_`]*B(?:[^|\\w]|$)")
 
+	// idRe is a feature or task id cited in prose (F-0411).
+	idRe = regexp.MustCompile(`\b[FT]-\d{4}\b`)
+
 	userKey = []byte(`"type":"user"`)
 	textKey = []byte(`"type":"text"`)
 	diffKey = []byte(`DIFF (`)
@@ -38,7 +42,8 @@ var (
 type roleScan struct {
 	seenFirst     bool
 	asked, fenced bool
-	lastReply     []byte // the last assistant line holding a text block
+	lastReply     []byte   // the last assistant line holding a text block
+	cited         []string // the feature ids (F-/T-) the first message cites, sorted (F-0411)
 }
 
 func (s *roleScan) feed(line []byte) {
@@ -53,9 +58,13 @@ func (s *roleScan) feed(line []byte) {
 		if json.Unmarshal(line, &l) != nil {
 			return
 		}
+		defer func() { slices.Sort(s.cited); s.cited = slices.Compact(s.cited) }()
 		for _, b := range blockTexts(l.Message.Content, !first) {
 			s.fenced = s.fenced || fenceRe.MatchString(b) && critRe.MatchString(b)
 			s.asked = s.asked || first && askedA.MatchString(b) && askedB.MatchString(b)
+			if first {
+				s.cited = append(s.cited, idRe.FindAllString(b, -1)...)
+			}
 		}
 	case bytes.Contains(line, assistantKey) && bytes.Contains(line, textKey):
 		s.lastReply = line
