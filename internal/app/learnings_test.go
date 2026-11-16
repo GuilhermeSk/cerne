@@ -263,3 +263,45 @@ func TestSkipLearningsRefusesWhatIsNotSkippable(t *testing.T) {
 		t.Errorf("a lowercase id is canonicalised: %v", err)
 	}
 }
+
+// F-0406: with CountOlder, what concluded before Since is counted apart, not listed.
+func TestLearningsCountsOlderApart(t *testing.T) {
+	repoDir, _, _ := newFeatureBackend(t)
+	seedLearnFeature(t, repoDir, "F-0001", domain.StateImplemented, withLearnings, t0, "")
+	seedLearnFeature(t, repoDir, "F-0002", domain.StateImplemented, withLearnings, t0.Add(48*time.Hour), "")
+	since := t0.Add(24 * time.Hour)
+	r, err := Learnings(repoDir, LearningsOpts{All: true, Since: since, CountOlder: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := listedIDs(r); fmt.Sprint(got) != "[F-0002]" || r.TotalFeatures != 1 || r.TotalItems != 2 {
+		t.Errorf("window = %v %+v", got, r)
+	}
+	if r.OlderFeatures != 1 || r.OlderItems != 2 {
+		t.Errorf("older = %d/%d, want 1/2", r.OlderFeatures, r.OlderItems)
+	}
+	r, _ = Learnings(repoDir, LearningsOpts{All: true, Since: since})
+	if r.OlderFeatures != 0 || r.OlderItems != 0 {
+		t.Errorf("older counted without CountOlder: %+v", r)
+	}
+}
+
+// F-0406: the cutoff boundary is inclusive, and Feature with a zero Since (the
+// post-complete path) lists a feature of any age.
+func TestLearningsCutoffBoundaryAndFeaturePath(t *testing.T) {
+	repoDir, _, _ := newFeatureBackend(t)
+	cut := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+	seedLearnFeature(t, repoDir, "F-0001", domain.StateImplemented, withLearnings, cut, "")
+	seedLearnFeature(t, repoDir, "F-0002", domain.StateImplemented, withLearnings, cut.Add(-time.Second), "")
+	r, err := Learnings(repoDir, LearningsOpts{All: true, Since: cut, CountOlder: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(listedIDs(r)) != "[F-0001]" || r.OlderFeatures != 1 {
+		t.Errorf("boundary: %v older=%d", listedIDs(r), r.OlderFeatures)
+	}
+	r, _ = Learnings(repoDir, LearningsOpts{All: true, Feature: "F-0002"})
+	if fmt.Sprint(listedIDs(r)) != "[F-0002]" {
+		t.Errorf("feature path: %v", listedIDs(r))
+	}
+}

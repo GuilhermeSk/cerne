@@ -20,6 +20,8 @@ type LearningsOpts struct {
 	Since   time.Time
 	Limit   int
 	All     bool
+	// CountOlder counts the features that fall before Since instead of dropping them (F-0406).
+	CountOlder bool
 }
 
 // LearningItem is one learning of a result.
@@ -40,6 +42,10 @@ type LearningsReport struct {
 	Features      []LearningFeature `json:"features"`
 	TotalFeatures int               `json:"total_features"`
 	TotalItems    int               `json:"total_items"`
+	// Cutoff is the date the default window starts at, empty when none applies (F-0406).
+	Cutoff        string `json:"cutoff"`
+	OlderFeatures int    `json:"older_features"`
+	OlderItems    int    `json:"older_items"`
 }
 
 // eventLearningsTriaged records that a feature's learnings were looked at and
@@ -75,7 +81,7 @@ func Learnings(repoDir string, opts LearningsOpts) (LearningsReport, error) {
 		if !ok {
 			at = f.CreatedAt // no completed event (imported history): the creation date, which never moves, stands in
 		}
-		if at.Before(opts.Since) || noteAfter(notes, f.ID, at) {
+		if noteAfter(notes, f.ID, at) {
 			continue
 		}
 		raw, err := os.ReadFile(FeatureDocPath(repoDir, f.ID, "result.md"))
@@ -84,6 +90,13 @@ func Learnings(repoDir string, opts LearningsOpts) (LearningsReport, error) {
 		}
 		texts := restmpl.LearningItems(string(raw))
 		if len(texts) == 0 {
+			continue
+		}
+		if at.Before(opts.Since) {
+			if opts.CountOlder {
+				rep.OlderFeatures++
+				rep.OlderItems += len(texts)
+			}
 			continue
 		}
 		lf := LearningFeature{ID: f.ID, Title: f.Title, CompletedAt: at}

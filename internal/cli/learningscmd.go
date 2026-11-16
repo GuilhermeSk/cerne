@@ -20,6 +20,15 @@ const (
 	learningsItemChars   = 160
 )
 
+// learningsTriageSince is the default window's start: learnings triage began
+// then, so earlier conclusions are counted apart, not listed (F-0406).
+var learningsTriageSince = time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+
+// learningsHistoryHint is a date before any feature, for the "lists them" hint.
+var learningsHistoryHint = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+const learningsDay = "2006-01-02"
+
 func newFeatureLearningsCmd(dir *string) *cobra.Command {
 	var (
 		featureID, since, skip, reason string
@@ -35,7 +44,8 @@ func newFeatureLearningsCmd(dir *string) *cobra.Command {
 			"Epics, rejected and superseded features are left out. For each durable item record a note " +
 			"('cerne note new --informs F-NNNN'); find the existing note it may complement (cerne note list --path <file>, cerne search) " +
 			"and use 'cerne note errata', or replace it with 'cerne note substituir'. --skip F-NNNN [--reason \"...\"] records that nothing in " +
-			"that feature's learnings is durable.",
+			"that feature's learnings is durable. " +
+			"Without --since or --feature only features concluded since " + learningsTriageSince.Format(learningsDay) + " are listed and the older ones are counted; --since " + learningsHistoryHint.Format(learningsDay) + " lists them.",
 		Example: "  cerne feature learnings                       # the 10 newest pending features\n" +
 			"  cerne feature learnings --all --json          # everything pending, machine-readable\n" +
 			"  cerne feature learnings --feature F-0123      # one feature\n" +
@@ -70,6 +80,8 @@ func runFeatureLearnings(cmd *cobra.Command, dir, featureID, since, skip, reason
 			return fmt.Errorf("--since wants a date as YYYY-MM-DD, got %q", since)
 		}
 		opts.Since = t
+	} else if opts.Feature == "" {
+		opts.Since, opts.CountOlder = learningsTriageSince, true
 	}
 	ctx, err := resolveProject(dir)
 	if err != nil {
@@ -87,6 +99,9 @@ func runFeatureLearnings(cmd *cobra.Command, dir, featureID, since, skip, reason
 	if err != nil {
 		return err
 	}
+	if !opts.Since.IsZero() {
+		rep.Cutoff = opts.Since.Format(learningsDay)
+	}
 	out := cmd.OutOrStdout()
 	if asJSON {
 		enc := json.NewEncoder(out)
@@ -103,6 +118,9 @@ func runFeatureLearnings(cmd *cobra.Command, dir, featureID, since, skip, reason
 		fmt.Fprintf(out, " (showing %d; --all lists the rest)", len(rep.Features))
 	}
 	fmt.Fprintln(out)
+	if rep.OlderFeatures > 0 {
+		fmt.Fprintf(out, "%d older feature(s) not listed (concluded before %s; --since %s lists them)\n", rep.OlderFeatures, rep.Cutoff, learningsHistoryHint.Format(learningsDay))
+	}
 	if len(rep.Features) > 0 {
 		fmt.Fprintln(out, learningsTail("F-NNNN"))
 	}
