@@ -63,3 +63,17 @@ func syncedAtJSON(synced *time.Time) *string {
 	s := synced.UTC().Format(time.RFC3339)
 	return &s
 }
+
+// priorSyncedAt is the sync time dbPath already records, zero when none or no
+// index: a rebuild passes it on, so only an index with no time falls back to
+// the clone's last fetch.
+func priorSyncedAt(dbPath string) time.Time {
+	if _, err := os.Stat(dbPath); err != nil {
+		return time.Time{}
+	}
+	t, ok, err := index.SyncedAt(dbPath)
+	if err != nil || !ok {
+		return time.Time{}
+	}
+	return t
+}

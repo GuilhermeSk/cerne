@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -22,7 +21,7 @@ func newSearchCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search <query>",
 		Short: "Full-text search over the whole history (superseded and rejected included)",
-		Long: "Full-text search over the whole history (superseded and rejected included).\nMatching works (W-) are listed after the results; --works lists only them, so it answers \"is someone already on this?\".",
+		Long:  "Full-text search over the whole history (superseded and rejected included).\nMatching works (W-) are listed after the results; --works lists only them, so it answers \"is someone already on this?\".",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSearch(cmd, dir, args[0], limit, asJSON, perDoc, worksOnly)
@@ -89,7 +88,7 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc,
 		if !asJSON {
 			fmt.Fprintln(out, "Building index...")
 		}
-		if err := index.Rebuild(ctx.repoDir, dbPath, time.Time{}); err != nil {
+		if err := index.Rebuild(ctx.repoDir, dbPath, priorSyncedAt(dbPath)); err != nil {
 			return err
 		}
 	} else if err != nil {

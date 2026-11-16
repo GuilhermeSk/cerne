@@ -19,7 +19,7 @@ const (
 		work_id, state UNINDEXED, actor UNINDEXED, raw_title UNINDEXED, title, body)`
 	insertWorkSQL = `INSERT INTO works_fts (work_id, state, actor, raw_title, title, body) VALUES (?, ?, ?, ?, ?, ?)`
 	searchWorkSQL = `SELECT work_id, state, actor, raw_title FROM works_fts
-		WHERE works_fts MATCH ? ORDER BY (state = 'active') DESC, bm25(works_fts, 1.0, 0, 0, 0, 10.0, 1.0) LIMIT ?`
+		WHERE works_fts MATCH ? ORDER BY (state = 'active') DESC, bm25(works_fts, 1.0, 0, 0, 0, 10.0, 1.0), work_id LIMIT ?`
 )
 
 // workRow is one work to insert: body joins the closing note, the handoff and
@@ -132,14 +132,25 @@ func SearchWorks(dbPath, query string, limit int) (works []WorkResult, total int
 		return nil, 0, err
 	}
 	defer db.Close()
+	// Try each form in turn; a syntax error moves to the next form, and only
+	// when every form errors is the error returned.
+	var lastErr error
+	ok := false
 	for _, m := range workMatches(query) {
-		works, total, err = runWorkQuery(db, m, limit)
-		if err != nil && ftsSyntax.MatchString(query) {
-			works, total, err = runWorkQuery(db, quotePhrase(query), limit)
+		w, n, qerr := runWorkQuery(db, m, limit)
+		if qerr != nil {
+			lastErr = qerr
+			continue
 		}
-		if err != nil || total > 0 {
+		ok = true
+		works, total = w, n
+		if n > 0 {
 			break
 		}
+	}
+	err = nil
+	if !ok {
+		err = lastErr
 	}
 	if err != nil && strings.Contains(err.Error(), "no such table") {
 		return nil, 0, nil
@@ -160,7 +171,7 @@ func workMatches(query string) []string {
 	if len(terms) > 1 {
 		out = append(out, strings.Join(terms, " OR "))
 	}
-	return out
+	return append(out, quotePhrase(query))
 }
 
 func runWorkQuery(db *sql.DB, match string, limit int) ([]WorkResult, int, error) {

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/henriquesakata/cerne/internal/index"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // worksFixture is perDocFixture plus two works about "parcelas".
@@ -290,5 +292,36 @@ func TestSearchWorksPrintOriginalTitle(t *testing.T) {
 		if !strings.Contains(out, "upgradeIfNewer breaks pods") || strings.Contains(out, "upgrade If Newer") {
 			t.Errorf("%v printed:\n%s", args, out)
 		}
+	}
+}
+
+// A query that is FTS5 syntax noise never fails the works listing.
+func TestSearchWorksSyntaxNoise(t *testing.T) {
+	projDir := worksFixture(t)
+	for _, q := range []string{"!!!", `"`, "-", "*", "a*b", "NEAR("} {
+		for _, args := range [][]string{{"search", "--works", q}, {"search", q}} {
+			if out, err := execCerne(t, append(args, "--dir", projDir)...); err != nil {
+				t.Errorf("%v: %v\n%s", args, err, out)
+			}
+		}
+	}
+}
+
+// Rebuilding an index of an older schema keeps the sync time it had.
+func TestSearchRebuildKeepsSyncedAt(t *testing.T) {
+	projDir := ageFixture(t, 5*time.Hour, true)
+	ctx, err := resolvePaths(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := indexPathFor(ctx.repoDir)
+	dropWorksTable(t, db)
+	if _, _, err := execCerneSplit(t, "search", "parcelas", "--dir", projDir); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := index.SyncedAt(db)
+	want := indexAgeClock.Add(-5 * time.Hour)
+	if err != nil || !ok || !got.Equal(want) {
+		t.Fatalf("synced_at = %v, %v, %v; want %v", got, ok, err, want)
 	}
 }
