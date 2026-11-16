@@ -14,15 +14,14 @@ type Props = {
   conversations: Conversation[]
   activeId: string
   onSelect: (id: string) => void
-  onNew: () => void
   onDelete: (id: string) => void
   onRename: (id: string, title: string) => void
 }
 
-// ConversationList (F-0219) é a seção "Conversas" da coluna esquerda do
-// Backlog: <details> nativo cobre o colapsável de graça (critério 1), sem
-// estado nem dependência nova.
-export default function ConversationList({ conversations, activeId, onSelect, onNew, onDelete, onRename }: Props) {
+// ConversationList (F-0219) é o conteúdo do menu "Conversas" da barra do chat
+// (F-0431): só a lista; o gatilho, "Nova conversa" e o abrir/fechar vivem no
+// BacklogChat.
+export default function ConversationList({ conversations, activeId, onSelect, onDelete, onRename }: Props) {
   const { t } = useT()
   const sorted = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
   const [, setTick] = useState(0)
@@ -40,6 +39,27 @@ export default function ConversationList({ conversations, activeId, onSelect, on
   // openedWith (C4): o título quando o editor abriu — "inalterado" é contra
   // ele, não contra c.title, que o resumo pode trocar com o editor aberto.
   const openedWith = useRef('')
+
+  // Foco após excluir (F-0431): a linha seguinte (ou a anterior); sem nenhuma,
+  // "Nova conversa". Só age se a lista de fato encolheu (o hook pode ter
+  // cancelado a confirmação).
+  const root = useRef<HTMLDivElement | null>(null)
+  const afterDelete = useRef<{ next: string | null; size: number } | null>(null)
+  useEffect(() => {
+    const pending = afterDelete.current
+    if (!pending) return
+    afterDelete.current = null
+    if (conversations.length >= pending.size) return
+    const sel = pending.next
+      ? root.current?.querySelector<HTMLElement>(`[data-conversation-id="${pending.next}"] .conversation-item-select`)
+      : document.querySelector<HTMLElement>('.backlog-chat-new')
+    sel?.focus()
+  }, [conversations])
+  const remove = (id: string) => {
+    const i = sorted.findIndex((c) => c.id === id)
+    afterDelete.current = { next: (sorted[i + 1] ?? sorted[i - 1])?.id ?? null, size: conversations.length }
+    onDelete(id)
+  }
 
   const startRename = (c: Conversation, btn: HTMLButtonElement) => {
     settled.current = false
@@ -60,17 +80,12 @@ export default function ConversationList({ conversations, activeId, onSelect, on
   }
 
   return (
-    <details className="conversation-list" open>
-      <summary>
-        {t.backlogChat.conversationsTitle} ({sorted.length})
-      </summary>
-      <button type="button" className="conversation-list-new" onClick={onNew}>
-        {t.backlogChat.newConversation}
-      </button>
+    <div className="conversation-list" ref={root}>
       <ul>
         {sorted.map((c) => (
           <li
             key={c.id}
+            data-conversation-id={c.id}
             className={c.id === activeId ? 'conversation-item active' : 'conversation-item'}
           >
             {editingId === c.id ? (
@@ -98,6 +113,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
                 // C9: a coluna corta o título (reticência de CSS); o tooltip mostra
                 // o nome inteiro, que o nome acessível (o conteúdo) já carrega.
                 title={c.title || t.backlogChat.untitledConversation}
+                aria-current={c.id === activeId ? 'true' : undefined}
                 onClick={() => onSelect(c.id)}
               >
                 <span className="conversation-item-title">{c.title || t.backlogChat.untitledConversation}</span>
@@ -125,13 +141,13 @@ export default function ConversationList({ conversations, activeId, onSelect, on
               type="button"
               className="conversation-item-delete"
               aria-label={t.backlogChat.deleteConversation}
-              onClick={() => onDelete(c.id)}
+              onClick={() => remove(c.id)}
             >
               ×
             </button>
           </li>
         ))}
       </ul>
-    </details>
+    </div>
   )
 }
