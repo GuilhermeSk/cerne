@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -17,19 +17,21 @@ import (
 func newSearchCmd() *cobra.Command {
 	var dir string
 	var limit int
-	var asJSON, perDoc bool
+	var asJSON, perDoc, worksOnly bool
 	cmd := &cobra.Command{
 		Use:   "search <query>",
 		Short: "Full-text search over the whole history (superseded and rejected included)",
+		Long:  "Full-text search over the whole history (superseded and rejected included).\nMatching works (W-) are listed after the results; --works lists only them, so it answers \"is someone already on this?\".",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSearch(cmd, dir, args[0], limit, asJSON, perDoc)
+			return runSearch(cmd, dir, args[0], limit, asJSON, perDoc, worksOnly)
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "project directory (defaults to cwd)")
 	_ = cmd.Flags().MarkHidden("dir")
 	cmd.Flags().IntVar(&limit, "limit", 10, "maximum number of results (entities; documents with --per-doc)")
 	cmd.Flags().BoolVar(&perDoc, "per-doc", false, "one line per document instead of per entity")
+	cmd.Flags().BoolVar(&worksOnly, "works", false, "list only the works (W-) that match, up to 50: is someone already on this?")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "machine-readable JSON output")
 	return cmd
 }
@@ -54,7 +56,21 @@ type entityHitJSON struct {
 	Docs []string `json:"docs"`
 }
 
-func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc bool) error {
+// maxWorkHits caps the works group (F-0408).
+const maxWorkHits = 5
+
+// maxWorksOnly caps the --works listing.
+const maxWorksOnly = 50
+
+// workHitJSON is the --json shape of a matching work.
+type workHitJSON struct {
+	ID    string `json:"id"`
+	State string `json:"state"`
+	Actor string `json:"actor"`
+	Title string `json:"title"`
+}
+
+func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc, worksOnly bool) error {
 	// Offline by design: search reads the cached clone and the local index,
 	// never the remote. 'cerne pull' is the sync point that refreshes both.
 	ctx, err := resolvePaths(dir)
@@ -66,21 +82,44 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc 
 		return err
 	}
 	out := cmd.OutOrStdout()
-	if _, err := os.Stat(dbPath); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(dbPath); errors.Is(err, os.ErrNotExist) || (err == nil && !index.HasWorks(dbPath)) {
+		// (a missing index, or one built before works were indexed)
 		// In --json mode stdout must stay pure JSON, so build the index silently.
 		if !asJSON {
 			fmt.Fprintln(out, "Building index...")
 		}
-		if err := index.Rebuild(ctx.repoDir, dbPath, time.Time{}); err != nil {
+		if err := index.Rebuild(ctx.repoDir, dbPath, priorSyncedAt(dbPath)); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
 	}
 
-	synced := indexSyncedAt(dbPath)
+	synced := indexSyncedAt(dbPath, ctx.repoDir)
 	if !asJSON {
 		noteIndexAge(cmd.ErrOrStderr(), ctx.cfg.Backend, synced)
+	}
+
+	if worksOnly {
+		works, total, err := index.SearchWorks(dbPath, query, maxWorksOnly)
+		if err != nil {
+			return err
+		}
+		if asJSON {
+			enc := json.NewEncoder(out)
+			enc.SetIndent("", "  ")
+			return enc.Encode(struct {
+				Works         []workHitJSON `json:"works"`
+				WorksTotal    int           `json:"works_total"`
+				IndexSyncedAt *string       `json:"index_synced_at"`
+			}{workHitsJSON(works), total, syncedAtJSON(synced)})
+		}
+		if len(works) == 0 {
+			fmt.Fprintf(out, "No works match \"%s\".\n", query)
+			return nil
+		}
+		printWorks(out, works, total, "")
+		return nil
 	}
 
 	var results []index.EntityResult
@@ -97,6 +136,9 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc 
 	if err != nil {
 		return err
 	}
+
+	// The works group is a bonus: a failure to read it never fails the search.
+	works, worksTotal, _ := index.SearchWorks(dbPath, query, maxWorkHits)
 
 	if asJSON {
 		hits := make([]searchHitJSON, len(results))
@@ -120,14 +162,17 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc 
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		return enc.Encode(struct {
-			Results       any     `json:"results"`
-			Broadened     bool    `json:"broadened,omitempty"`
-			IndexSyncedAt *string `json:"index_synced_at"`
-		}{payload, broadened, syncedAtJSON(synced)})
+			Results       any           `json:"results"`
+			Broadened     bool          `json:"broadened,omitempty"`
+			IndexSyncedAt *string       `json:"index_synced_at"`
+			Works         []workHitJSON `json:"works"`
+			WorksTotal    int           `json:"works_total"`
+		}{payload, broadened, syncedAtJSON(synced), workHitsJSON(works), worksTotal})
 	}
 
 	if len(results) == 0 {
 		fmt.Fprintf(out, "Nothing found for \"%s\".\n", query)
+		printWorks(out, works, worksTotal, query)
 		return nil
 	}
 	if broadened && (perDoc || results[0].Partial) {
@@ -146,7 +191,38 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc 
 			fmt.Fprintln(out, "  "+r.Snippet)
 		}
 	}
+	printWorks(out, works, worksTotal, query)
 	return nil
+}
+
+func workHitsJSON(works []index.WorkResult) []workHitJSON {
+	hits := make([]workHitJSON, len(works))
+	for i, w := range works {
+		hits[i] = workHitJSON{w.ID, w.State, w.Actor, w.Title}
+	}
+	return hits
+}
+
+// printWorks lists the matching works after the entity results: "Is anyone on
+// it already?" is a different question from "what do we know". When more match
+// than are shown it says so; hintQuery, when set, adds how to list them all.
+func printWorks(out io.Writer, works []index.WorkResult, total int, hintQuery string) {
+	if len(works) == 0 {
+		return
+	}
+	if hintQuery != "" {
+		fmt.Fprintln(out, "\nWorks:")
+	}
+	for _, w := range works {
+		fmt.Fprintf(out, "%s [%s] %s — %s\n", w.ID, w.State, w.Actor, w.Title)
+	}
+	if more := total - len(works); more > 0 {
+		if hintQuery != "" {
+			fmt.Fprintf(out, "… %d more works match — cerne search --works \"%s\"\n", more, hintQuery)
+		} else {
+			fmt.Fprintf(out, "… %d more works match — narrow the query\n", more)
+		}
+	}
 }
 
 // resultHeader renders one --per-doc hit header:

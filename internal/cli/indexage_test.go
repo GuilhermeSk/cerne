@@ -130,3 +130,50 @@ func TestIndexRefreshFailureWarnsOnStderr(t *testing.T) {
 		t.Fatalf("stderr lacks the index warning:\n%s", stderr)
 	}
 }
+
+// F-0408 crit. 6: an old index with no recorded time shows the clone's
+// FETCH_HEAD time, but only when the fetch is not newer than the index file.
+func TestIndexAgeOldIndexUsesFetchHead(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		fetchAge  time.Duration // FETCH_HEAD age before the clock
+		indexAge  time.Duration // index file age before the clock
+		withFetch bool
+		wantErr   string
+	}{
+		{"fetch older than index", 30 * time.Hour, time.Hour, true, "note: search index last synced 30h ago" + indexAgeSuffix},
+		{"fetch newer than index", time.Hour, 30 * time.Hour, true, "note: search index last synced: unknown" + indexAgeSuffix},
+		{"no FETCH_HEAD", 0, time.Hour, false, "note: search index last synced: unknown" + indexAgeSuffix},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			projDir := ageFixture(t, 0, true)
+			ctx, err := resolvePaths(projDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dbPath := indexPathFor(ctx.repoDir)
+			idxAt := indexAgeClock.Add(-c.indexAge)
+			if err := os.Chtimes(dbPath, idxAt, idxAt); err != nil {
+				t.Fatal(err)
+			}
+			fh := filepath.Join(ctx.repoDir, ".git", "FETCH_HEAD")
+			os.Remove(fh)
+			if c.withFetch {
+				if err := os.WriteFile(fh, []byte("x\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				at := indexAgeClock.Add(-c.fetchAge)
+				if err := os.Chtimes(fh, at, at); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, stderr, err := execCerneSplit(t, "search", "parcelas", "--dir", projDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stderr != c.wantErr {
+				t.Fatalf("stderr = %q, want %q", stderr, c.wantErr)
+			}
+		})
+	}
+}

@@ -68,8 +68,16 @@ type Result struct {
 // title-only row (doc="", empty body). The whole rebuild runs in a single
 // transaction.
 func Rebuild(repoDir, dbPath string, syncedAt time.Time) error {
+	if syncedAt.IsZero() {
+		// No pull time: the clone's last fetch is when it matched the backend.
+		syncedAt, _ = gitback.FetchedAt(repoDir)
+	}
 	head := cloneHead(repoDir)
 	rows, err := collectRows(repoDir)
+	if err != nil {
+		return err
+	}
+	workRows, err := collectWorkRows(repoDir)
 	if err != nil {
 		return err
 	}
@@ -93,6 +101,12 @@ func Rebuild(repoDir, dbPath string, syncedAt time.Time) error {
 	if _, err := tx.Exec(createTableSQL); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(dropWorksSQL); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(createWorksSQL); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(dropMetaSQL); err != nil {
 		return err
 	}
@@ -105,6 +119,9 @@ func Rebuild(repoDir, dbPath string, syncedAt time.Time) error {
 		}
 	}
 	if err := insertRows(tx, rows); err != nil {
+		return err
+	}
+	if err := insertWorkRows(tx, workRows); err != nil {
 		return err
 	}
 	if err := setHead(tx, head); err != nil {
@@ -166,13 +183,18 @@ func insertRows(tx *sql.Tx, rows []row) error {
 // reinserted from the clone at repoDir, in one transaction; an id the clone no
 // longer has is only deleted. It needs an index Rebuild already built (an
 // error otherwise: the caller falls back to Rebuild). syncedAt, when not zero,
-// replaces the recorded sync time. Only the touched entities' files are read.
+// replaces the recorded sync time; with zero the recorded time stays, and
+// FETCH_HEAD is not consulted (the index never saw that fetch). Only the touched entities' files are read.
 func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 	if _, err := os.Stat(dbPath); err != nil {
 		return err
 	}
 	head := cloneHead(repoDir)
 	rows, err := collectRowsFor(repoDir, ids)
+	if err != nil {
+		return err
+	}
+	workRows, err := collectWorkRowsFor(repoDir, ids)
 	if err != nil {
 		return err
 	}
@@ -190,13 +212,29 @@ func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 		return err
 	}
 	defer tx.Rollback()
+	// An index built before works were indexed has no works_fts: its work rows
+	// are skipped, not created half-filled; the search rebuilds it whole.
+	var hasWorks int
+	if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'works_fts' AND sql LIKE '%raw_title%'`).Scan(&hasWorks); err != nil {
+		return err
+	}
 	for id := range want {
 		if _, err := tx.Exec(`DELETE FROM docs WHERE entity_id = ?`, id); err != nil {
 			return err
 		}
+		if hasWorks > 0 && strings.HasPrefix(id, "W-") {
+			if _, err := tx.Exec(`DELETE FROM works_fts WHERE work_id = ?`, id); err != nil {
+				return err
+			}
+		}
 	}
 	if err := insertRows(tx, rows); err != nil {
 		return err
+	}
+	if hasWorks > 0 {
+		if err := insertWorkRows(tx, workRows); err != nil {
+			return err
+		}
 	}
 	if !syncedAt.IsZero() {
 		if _, err := tx.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('synced_at', ?)`, syncedAt.UTC().Format(time.RFC3339)); err != nil {
@@ -211,7 +249,7 @@ func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 
 // IDsFromPaths maps backend paths (as `git diff --name-only` prints them) to
 // the entity ids they belong to: entities/<kind>/<id>.json,
-// content/features/<id>/<doc>.md and content/<kind>/<id>.md (errata included).
+// content/{features,works,worklogs}/<id>/<file> and content/<kind>/<id>.md (errata included).
 // Other paths map to nothing; the result is sorted and de-duplicated.
 // ponytail: content/<other>/<x>.md (wiki, runs, ...) also yields an id, but one
 // with no FTS rows, so for Update it is a delete-only no-op; filter by kind if
@@ -224,7 +262,7 @@ func IDsFromPaths(paths []string) []string {
 		switch {
 		case len(parts) == 3 && parts[0] == "entities" && strings.HasSuffix(parts[2], ".json"):
 			seen[stem(parts[2])] = true
-		case len(parts) == 4 && parts[0] == "content" && parts[1] == "features":
+		case len(parts) == 4 && parts[0] == "content" && (parts[1] == "features" || parts[1] == "works" || parts[1] == "worklogs"):
 			seen[parts[2]] = true
 		case len(parts) == 3 && parts[0] == "content" && strings.HasSuffix(parts[2], ".md"):
 			seen[stem(parts[2])] = true
