@@ -6,6 +6,8 @@ package skills
 import (
 	"bytes"
 	"embed"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -209,7 +211,13 @@ func Stale(projDir string) []string {
 	return out
 }
 
+// sameFile reports whether path holds content. A read error other than
+// not-exist leaves the verdict unknown, which counts as current: the check
+// must never flag (or rewrite) what it cannot read.
 func sameFile(path, content string) bool {
 	disk, err := os.ReadFile(path)
-	return err == nil && bytes.Equal(disk, []byte(content))
+	if err != nil {
+		return !errors.Is(err, fs.ErrNotExist)
+	}
+	return bytes.Equal(disk, []byte(content))
 }

@@ -139,3 +139,20 @@ func TestStale(t *testing.T) {
 		t.Fatalf("diverging reference: Stale = %v", got)
 	}
 }
+
+// TestStaleUnreadableIsNotStale (F-0405): a read error other than not-exist
+// leaves the verdict unknown, so the skill is not listed.
+func TestStaleUnreadableIsNotStale(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Install(dir); err != nil {
+		t.Fatal(err)
+	}
+	skill := filepath.Join(dir, ".claude", "skills", "cerne-self-learning", "SKILL.md")
+	if err := os.Chmod(skill, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(skill, 0o644)
+	if got := Stale(dir); len(got) != 0 {
+		t.Fatalf("unreadable SKILL.md: Stale = %v, want none", got)
+	}
+}

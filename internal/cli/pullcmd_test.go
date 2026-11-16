@@ -729,3 +729,39 @@ func TestPullSyncSkillsCanonical(t *testing.T) {
 		t.Fatal("canonical skill not rewritten")
 	}
 }
+
+// F-0405 crit. 1: a canonical-skill failure warns and the learned-skills sync
+// still runs; unchanged canonical skills are reported as up to date.
+func TestPullSyncSkillsCanonicalFailureContinues(t *testing.T) {
+	projDir, learnedSkill := markedNoteProject(t)
+	block := filepath.Join(projDir, ".claude", "skills", "cerne-self-learning")
+	if err := os.RemoveAll(block); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(block, []byte("not a dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := execCerne(t, "pull", "--sync-skills", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("pull must stay green: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "warning: canonical skill sync failed") {
+		t.Fatalf("want a canonical-skill warning:\n%s", out)
+	}
+	if _, err := os.Stat(learnedSkill); err != nil {
+		t.Fatalf("learned sync skipped after the canonical failure: %v", err)
+	}
+}
+
+func TestPullSyncSkillsCanonicalUpToDateLine(t *testing.T) {
+	projDir, _ := markedNoteProject(t)
+	out, err := execCerne(t, "pull", "--sync-skills", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("pull: %v\n%s", err, out)
+	}
+	for _, want := range []string{"cerne-authoring: up to date in .claude/skills/cerne-authoring", "cerne-self-learning: up to date in .claude/skills/cerne-self-learning"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q:\n%s", want, out)
+		}
+	}
+}

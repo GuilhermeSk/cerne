@@ -264,7 +264,7 @@ func TestHookChannelSessionStartStaleSkills(t *testing.T) {
 	}
 
 	out := sessionStart(t, projDir)
-	if !strings.Contains(out, "cerne skill install") || strings.Contains(out, "\n\n") {
+	if !strings.Contains(out, "cerne skill install") || strings.Count(out, "\n") != 1 || !strings.HasSuffix(out, "\n") {
 		t.Fatalf("without sync_skills want one warning line naming the fix, got %q", out)
 	}
 	if raw, _ := os.ReadFile(stale); string(raw) != "old" {
@@ -295,7 +295,7 @@ func TestHookChannelSessionStartStaleHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := sessionStart(t, projDir)
-	if !strings.Contains(out, "1 managed hook") || !strings.Contains(out, "cerne hook install") {
+	if !strings.Contains(out, "1 managed hook") || !strings.Contains(out, "cerne hook install") || strings.Count(out, "\n") != 1 {
 		t.Fatalf("want a counted hook warning, got %q", out)
 	}
 	if raw, _ := os.ReadFile(script); string(raw) != "#!/bin/sh\n# local\n" {
@@ -337,4 +337,45 @@ func BenchmarkHookChannelSessionStart(b *testing.B) {
 			}
 		}
 	})
+}
+
+// TestHookChannelSessionStartFailOpen (F-0405 crit. 5): with sync_skills on and
+// an unwritable skills tree, the rewrite fails silently — empty output, exit 0.
+func TestHookChannelSessionStartFailOpen(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	setSyncSkills(t, projDir, true)
+	skillsDir := filepath.Join(projDir, ".claude", "skills")
+	stale := filepath.Join(skillsDir, "cerne-self-learning", "SKILL.md")
+	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(stale)
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(stale, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755); os.Chmod(stale, 0o644) })
+	if out := sessionStart(t, projDir); out != "" {
+		t.Fatalf("unwritable skills tree must be silent, got %q", out)
+	}
+}
+
+// TestHookChannelSessionStartUnreadableIsUnknown (F-0405): a read error other
+// than not-exist is not staleness — nothing printed, nothing rewritten.
+func TestHookChannelSessionStartUnreadableIsUnknown(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	for _, on := range []bool{false, true} {
+		setSyncSkills(t, projDir, on)
+		skill := filepath.Join(projDir, ".claude", "skills", "cerne-self-learning", "SKILL.md")
+		if err := os.Chmod(skill, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(skill, 0o644) })
+		if out := sessionStart(t, projDir); out != "" {
+			t.Fatalf("sync_skills=%v: unreadable skill must be silent, got %q", on, out)
+		}
+		os.Chmod(skill, 0o644)
+	}
 }

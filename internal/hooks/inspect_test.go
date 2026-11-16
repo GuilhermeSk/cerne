@@ -94,3 +94,18 @@ func TestStale(t *testing.T) {
 		t.Fatal("Stale rewrote the script")
 	}
 }
+
+func TestStaleUnreadableIsNotStale(t *testing.T) {
+	proj := t.TempDir()
+	if _, err := Install(proj); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(proj, ".claude", "hooks", Assets()[1].Script)
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(path, 0o755)
+	if got := Stale(proj); len(got) != 0 {
+		t.Fatalf("unreadable script: Stale = %v, want none", got)
+	}
+}
