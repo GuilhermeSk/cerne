@@ -67,6 +67,14 @@ func TestSameBackend_Remotes(t *testing.T) {
 		{"git@github.com:o/r", "git@github.com:o/R", false},
 		{"git@github.com:o/r", "git@github.com:o/r2", false},
 		{"git@github.com:o/r", "/srv/o/r", false},
+		{"ssh://host:22/x", "host:x", true},
+		{"https://h:443/x", "https://h/x", true},
+		{"http://h:80/x", "http://h/x", true},
+		{"https://h:8443/x", "https://h/x", false},
+		{"ssh://git@h/x", "h:x", true},
+		{"ssh://git@h/x", "user@h:x", true},
+		{"https://host/o/a@b", "https://host/o/a@b/", true},
+		{"https://host/o/a@b", "https://host/o/b", false},
 	} {
 		if got := sameBackend(c.a, c.b); got != c.want {
 			t.Errorf("sameBackend(%q, %q) = %v, want %v", c.a, c.b, got, c.want)
@@ -107,5 +115,113 @@ func TestCheckOrigin_RedactsUserinfo(t *testing.T) {
 	err := CheckOrigin(cloneOf(t, a), "https://user:s3cret@host.example/o/r")
 	if !errors.Is(err, ErrForeignClone) || strings.Contains(err.Error(), "s3cret") {
 		t.Fatalf("err = %v, want ErrForeignClone without the token", err)
+	}
+}
+
+func TestRedactURL(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://user:tok@host/o/r": "https://host/o/r",
+		"https://host/o/a@b":        "https://host/o/a@b",
+		"user:tok@host:o/r":         "user@host:o/r",
+		"git@github.com:o/r":        "git@github.com:o/r",
+		"https://tok@host":          "https://host",
+		"/srv/o/r":                  "/srv/o/r",
+	} {
+		if got := redactURL(in); got != want {
+			t.Errorf("redactURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSameBackend_FileAndWindowsSpellings(t *testing.T) {
+	if !sameBackend("file://localhost/srv/x", "/srv/x") {
+		t.Error("file://localhost/x must equal /x")
+	}
+	for _, p := range []string{`C:\x\y`, "C:/x/y", "file:///C:/x/y"} {
+		if !isLocalBackend(fileURLToPath(p)) {
+			t.Errorf("%q must be a local path, not an scp host", p)
+		}
+	}
+	if sameBackend(`C:\x`, "git@c:x") {
+		t.Error("a drive path is not an scp remote")
+	}
+	if got := fileURLToPath("file:///C:/x/y"); got != "C:/x/y" {
+		t.Errorf("file:///C:/x/y -> %q", got)
+	}
+}
+
+func TestSameBackend_OneSideMissing(t *testing.T) {
+	base := t.TempDir()
+	real := filepath.Join(base, "real.git")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(base, "gone.git")
+	if sameBackend(real, missing) || sameBackend(missing, real) {
+		t.Error("an existing and a missing path differ")
+	}
+	if !sameBackend(missing, missing+"/") {
+		t.Error("the same missing path compares by its cleaned form")
+	}
+}
+
+func TestCheckOrigin_RelativeOriginIsRelativeToClone(t *testing.T) {
+	base := t.TempDir()
+	a := filepath.Join(base, "a.git")
+	if err := InitBare(a); err != nil {
+		t.Fatal(err)
+	}
+	repo := cloneOf(t, a)
+	rel, err := filepath.Rel(repo, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(repo, ".git", "config")
+	raw, _ := os.ReadFile(cfgPath)
+	if err := os.WriteFile(cfgPath, []byte(strings.Replace(string(raw), a, rel, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir()) // not the clone, not the backend's parent
+	if err := CheckOrigin(repo, a); err != nil {
+		t.Fatalf("relative origin must resolve against the clone: %v", err)
+	}
+}
+
+func TestCheckOrigin_UnverifiableClone(t *testing.T) {
+	a := filepath.Join(t.TempDir(), "a.git")
+	if err := InitBare(a); err != nil {
+		t.Fatal(err)
+	}
+	repo := cloneOf(t, a)
+	cfgPath := filepath.Join(repo, ".git", "config")
+	raw, _ := os.ReadFile(cfgPath)
+	if err := os.WriteFile(cfgPath, []byte(strings.Replace(string(raw), "[remote \"origin\"]", "[remote \"upstream\"]", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckOrigin(repo, a); !errors.Is(err, ErrUnverifiableClone) {
+		t.Fatalf("no origin: err = %v, want ErrUnverifiableClone", err)
+	}
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckOrigin(repo, a); !errors.Is(err, ErrUnverifiableClone) {
+		t.Fatalf("no config: err = %v, want ErrUnverifiableClone", err)
+	}
+}
+
+func BenchmarkCheckOrigin(b *testing.B) {
+	a := filepath.Join(b.TempDir(), "a.git")
+	if err := InitBare(a); err != nil {
+		b.Fatal(err)
+	}
+	repo := filepath.Join(b.TempDir(), "repo")
+	if err := Clone(a, repo); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := CheckOrigin(repo, a); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

@@ -1,11 +1,13 @@
 package gitback
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -13,14 +15,18 @@ import (
 // project declares (F-0434).
 var ErrForeignClone = errors.New("cache clone belongs to another backend")
 
+// ErrUnverifiableClone marks a cache clone whose origin cannot be read (no
+// origin remote, unreadable config): it cannot be proven to be ours (F-0434).
+var ErrUnverifiableClone = errors.New("cache clone origin cannot be verified")
+
 // CheckOrigin refuses a clone in repoDir whose origin is another backend. The
 // cache is keyed by project_id only, so two projects sharing an id would share
 // one clone; the clone is never touched here (the cache dir also holds rooms
 // and messages), the caller just stops.
 func CheckOrigin(repoDir, backend string) error {
-	origin, err := OriginURL(repoDir)
+	origin, err := readOrigin(repoDir)
 	if err != nil {
-		return fmt.Errorf("reading the origin of %s: %w", repoDir, err)
+		return fmt.Errorf("%w: %s: %v", ErrUnverifiableClone, repoDir, err)
 	}
 	if sameBackend(origin, backend) {
 		return nil
@@ -30,19 +36,76 @@ func CheckOrigin(repoDir, backend string) error {
 		ErrForeignClone, repoDir, redactURL(origin), redactURL(backend))
 }
 
-// redactURL drops the userinfo of a scheme URL (a token must not reach an
-// error message or an HTTP body); the scp form's "git@" is not a secret.
-func redactURL(u string) string {
-	scheme, rest, ok := strings.Cut(u, "://")
-	if !ok {
-		return u
+// readOrigin reads remote "origin"'s url straight from .git/config (no repo
+// open: this runs on every command). A relative origin is relative to the
+// clone, as git runs inside it. A gitfile (worktree) falls back to go-git.
+func readOrigin(repoDir string) (string, error) {
+	f, err := os.Open(filepath.Join(repoDir, ".git", "config"))
+	if err != nil {
+		if fi, serr := os.Stat(filepath.Join(repoDir, ".git")); serr == nil && !fi.IsDir() {
+			return OriginURL(repoDir)
+		}
+		return "", err
 	}
-	return scheme + "://" + rest[strings.LastIndex(rest, "@")+1:]
+	defer f.Close()
+	in := false
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if strings.HasPrefix(line, "[") {
+			in = strings.EqualFold(strings.Join(strings.Fields(strings.Trim(line, "[]")), " "), `remote "origin"`)
+			continue
+		}
+		if k, v, ok := strings.Cut(line, "="); ok && in && strings.EqualFold(strings.TrimSpace(k), "url") {
+			v = strings.Trim(strings.TrimSpace(v), `"`)
+			if v != "" {
+				if isLocalBackend(v) && !filepath.IsAbs(v) && !strings.HasPrefix(v, "~") && !strings.HasPrefix(v, "file://") {
+					v = filepath.Join(repoDir, v)
+				}
+				return v, nil
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return "", err
+	}
+	return "", errors.New("no origin url")
 }
+
+// redactURL drops the userinfo of a scheme URL (a token must not reach an
+// error message or an HTTP body) and the password of an scp-form one. The
+// authority ends at the first "/", so an "@" in the path stays intact.
+func redactURL(u string) string {
+	if scheme, rest, ok := strings.Cut(u, "://"); ok {
+		auth, path, hasPath := strings.Cut(rest, "/")
+		auth = auth[strings.LastIndex(auth, "@")+1:]
+		if hasPath {
+			return scheme + "://" + auth + "/" + path
+		}
+		return scheme + "://" + auth
+	}
+	if at := strings.Index(u, "@"); at > 0 && !strings.Contains(u[:at], "/") {
+		if c := strings.Index(u[:at], ":"); c >= 0 {
+			return u[:c] + u[at:]
+		}
+	}
+	return u
+}
+
+var winDrive = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
+
+// isLocalBackend is IsLocalPath plus Windows drive paths, which the scp-like
+// pattern would otherwise take for host "C".
+// A user-less scp form (host:path), which git accepts, is a remote too.
+func isLocalBackend(u string) bool {
+	return winDrive.MatchString(u) || (IsLocalPath(u) && !bareSCP.MatchString(u))
+}
+
+var bareSCP = regexp.MustCompile(`^[A-Za-z0-9_.-]+:`)
 
 func sameBackend(a, b string) bool {
 	a, b = fileURLToPath(strings.TrimSpace(a)), fileURLToPath(strings.TrimSpace(b))
-	la, lb := IsLocalPath(a), IsLocalPath(b)
+	la, lb := isLocalBackend(a), isLocalBackend(b)
 	if la != lb {
 		return false
 	}
@@ -58,13 +121,19 @@ func sameBackend(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b)
 }
 
+// fileURLToPath turns file:///x, file://localhost/x and file:///C:/x into a
+// path.
 func fileURLToPath(u string) string {
 	rest, ok := strings.CutPrefix(u, "file://")
 	if !ok {
 		return u
 	}
+	rest = strings.TrimPrefix(rest, "localhost")
 	if p, err := url.PathUnescape(rest); err == nil {
-		return p
+		rest = p
+	}
+	if len(rest) > 2 && rest[0] == '/' && winDrive.MatchString(rest[1:]) {
+		rest = rest[1:]
 	}
 	return rest
 }
@@ -83,27 +152,29 @@ func expandLocal(u string) string {
 	return u
 }
 
-// canonRemote folds the spellings of one remote: scp form and ssh://, a
-// trailing slash or ".git", the host's case (the path's case is kept) and any
-// password/token.
+var defaultPorts = map[string]string{"ssh": "22", "https": "443", "http": "80"}
+
+// canonRemote folds the spellings of one remote: scp form and ssh://, the
+// user and password, the scheme's default port, a trailing slash or ".git",
+// and the host's case (the path's case is kept).
 func canonRemote(u string) string {
-	if !strings.Contains(u, "://") { // scp form user@host:path
-		if at := strings.Index(u, "@"); at >= 0 {
-			if host, path, ok := strings.Cut(u[at+1:], ":"); ok {
-				u = "ssh://" + u[:at+1] + host + "/" + strings.TrimLeft(path, "/")
-			}
-		} else if host, path, ok := strings.Cut(u, ":"); ok {
-			u = "ssh://" + host + "/" + strings.TrimLeft(path, "/")
+	scheme, host, port, path := "ssh", "", "", ""
+	if s, rest, ok := strings.Cut(u, "://"); ok {
+		pu, err := url.Parse(s + "://" + rest)
+		if err != nil {
+			return strings.TrimRight(u, "/")
 		}
+		scheme, host, port, path = pu.Scheme, pu.Hostname(), pu.Port(), pu.Path
+	} else {
+		rest := u[strings.Index(u, "@")+1:] // -1+1 = 0 when there is no user
+		host, path, _ = strings.Cut(rest, ":")
 	}
-	pu, err := url.Parse(u)
-	if err != nil {
-		return strings.TrimRight(u, "/")
+	if port == defaultPorts[scheme] {
+		port = ""
 	}
-	user := ""
-	if pu.User != nil && pu.Scheme == "ssh" {
-		user = pu.User.Username() + "@"
+	if port != "" {
+		port = ":" + port
 	}
-	path := strings.TrimSuffix(strings.TrimRight(pu.Path, "/"), ".git")
-	return pu.Scheme + "://" + user + strings.ToLower(pu.Host) + path
+	path = "/" + strings.TrimLeft(strings.TrimSuffix(strings.TrimRight(path, "/"), ".git"), "/")
+	return scheme + "://" + strings.ToLower(host) + port + path
 }
