@@ -171,3 +171,15 @@ func callsCerne(body, invocation string) bool {
 	}
 	return false
 }
+
+// Stale names the managed scripts that are missing or differ from the embed
+// (F-0405). Read-only, and the same verdict ScriptState gives the harness.
+func Stale(projDir string) []string {
+	var out []string
+	for _, a := range Assets() {
+		if ScriptState(projDir, a.Script) != FileOK {
+			out = append(out, a.Script)
+		}
+	}
+	return out
+}
