@@ -187,3 +187,29 @@ func writeSkill(dst, content string) (Status, error) {
 	}
 	return StatusCreated, nil
 }
+
+// Stale names the canonical skills whose SKILL.md or reference files are
+// missing or differ from the embed under <projDir>/.claude/skills (F-0405). It
+// only reads: the one comparison shared by the harness and the session start.
+func Stale(projDir string) []string {
+	var out []string
+	for _, s := range All() {
+		dir := filepath.Join(projDir, ".claude", "skills", s.Name)
+		if !sameFile(filepath.Join(projDir, ".claude", "skills", filepath.FromSlash(s.RelPath)), s.Content) {
+			out = append(out, s.Name)
+			continue
+		}
+		for _, r := range s.References {
+			if !sameFile(filepath.Join(dir, filepath.FromSlash(r.RelPath)), r.Content) {
+				out = append(out, s.Name)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func sameFile(path, content string) bool {
+	disk, err := os.ReadFile(path)
+	return err == nil && bytes.Equal(disk, []byte(content))
+}

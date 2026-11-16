@@ -102,3 +102,40 @@ func TestInstallCreatesUpdatesUnchanged(t *testing.T) {
 		t.Fatalf("after update, installed content != canonical (overwrite expected)")
 	}
 }
+
+// TestStale (F-0405): Stale names the canonical skills missing or diverging
+// from the embed — SKILL.md or a reference file — and is empty when current.
+func TestStale(t *testing.T) {
+	dir := t.TempDir()
+	if got := Stale(dir); len(got) != len(All()) {
+		t.Fatalf("empty project: Stale = %v, want every skill", got)
+	}
+	if _, err := Install(dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := Stale(dir); len(got) != 0 {
+		t.Fatalf("fresh install: Stale = %v, want none", got)
+	}
+	skill := filepath.Join(dir, ".claude", "skills", "cerne-self-learning", "SKILL.md")
+	if err := os.WriteFile(skill, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Stale(dir); len(got) != 1 || got[0] != "cerne-self-learning" {
+		t.Fatalf("diverging SKILL.md: Stale = %v", got)
+	}
+	if _, err := Install(dir); err != nil {
+		t.Fatal(err)
+	}
+	var ref string
+	for _, s := range All() {
+		if len(s.References) > 0 {
+			ref = filepath.Join(dir, ".claude", "skills", s.Name, filepath.FromSlash(s.References[0].RelPath))
+		}
+	}
+	if err := os.WriteFile(ref, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Stale(dir); len(got) != 1 || got[0] != "cerne-authoring" {
+		t.Fatalf("diverging reference: Stale = %v", got)
+	}
+}
