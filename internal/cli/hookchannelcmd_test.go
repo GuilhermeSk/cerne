@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/henriquesakata/cerne/internal/domain"
-	"github.com/henriquesakata/cerne/internal/materialize"
-	"github.com/henriquesakata/cerne/internal/store"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,10 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/henriquesakata/cerne/internal/domain"
 	"github.com/henriquesakata/cerne/internal/hooks"
+	"github.com/henriquesakata/cerne/internal/materialize"
 	"github.com/henriquesakata/cerne/internal/project"
 	"github.com/henriquesakata/cerne/internal/room"
 	"github.com/henriquesakata/cerne/internal/skills"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 func sessionStartJSON(t *testing.T, sess, cwd string) string {
@@ -417,25 +417,54 @@ func boardSection(t *testing.T, ctx string) string {
 }
 
 // TestHookChannelSessionStartBoard (F-0409 crit. 1): session start prints the
-// board read from the clone, equal to the CONTEXT.md sections generated from
-// the same clone.
+// board read from the clone, equal as a whole to the CONTEXT.md sections
+// generated from the same clone with the same now and the same recent window
+// (cfg.RecentWorkWindowDays(), the source `pull` uses), on a fixture with an
+// active work, an idle work and pending handoffs.
 func TestHookChannelSessionStartBoard(t *testing.T) {
 	projDir, _, repoDir := setupProject(t)
-	if out, err := execCerne(t, "work", "start", "Mexer no servidor", "--dir", projDir); err != nil {
-		t.Fatalf("work start: %v\n%s", err, out)
+	cfg, _, err := project.LoadConfig(projDir)
+	if err != nil {
+		t.Fatal(err)
 	}
+	cfg.RecentWorkDays = 3
+	if err := project.SaveConfig(projDir, cfg); err != nil {
+		t.Fatal(err)
+	}
+	days := cfg.RecentWorkWindowDays()
+	now := time.Now().UTC()
+	for _, w := range []store.Work{
+		{ID: "W-0001", Title: "Mexer no servidor", State: domain.WorkActive, Actor: "a", CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)},
+		{ID: "W-0002", Title: "Parado", State: domain.WorkActive, Actor: "a", CreatedAt: now.AddDate(0, 0, -5), UpdatedAt: now.AddDate(0, 0, -5)},
+	} {
+		if err := store.SaveWork(repoDir, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, from := range []string{"W-0001", "W-0009"} {
+		at := now.Add(-time.Duration(i+2) * time.Hour)
+		h := store.Handoff{ID: fmt.Sprintf("HO-%04d", i+1), State: domain.HandoffPending, FromWork: from, Actor: "agent:a@b", CreatedAt: at, UpdatedAt: at}
+		if err := store.SaveHandoff(repoDir, h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := loadBoard
+	loadBoard = func(dir string, d int, _ time.Time) (string, error) { return old(dir, d, now) }
+	t.Cleanup(func() { loadBoard = old })
+
 	docs := filepath.Join(t.TempDir(), ".docs")
-	if _, err := materialize.MaterializeAt(repoDir, docs, "", false, 14, time.Now()); err != nil {
+	if _, err := materialize.MaterializeAt(repoDir, docs, "", false, days, now); err != nil {
 		t.Fatal(err)
 	}
 	ctx, err := os.ReadFile(filepath.Join(docs, "CONTEXT.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := strings.TrimSpace(boardSection(t, string(ctx)))
+	want := strings.TrimLeft(boardSection(t, string(ctx)), "\n")
+	want = strings.TrimRight(want, "\n") + "\n"
 	out := sessionStartBoard(t, projDir)
-	if !strings.Contains(out, "Mexer no servidor") || !strings.HasPrefix(out, want) {
-		t.Fatalf("board differs from CONTEXT.md section\nwant prefix:\n%s\ngot:\n%s", want, out)
+	if out != want || !strings.Contains(out, "idle for over 3 days") || !strings.Contains(out, "## Pending handoffs") {
+		t.Fatalf("board differs from CONTEXT.md sections\nwant:\n%s\ngot:\n%s", want, out)
 	}
 }
 
@@ -534,5 +563,75 @@ func BenchmarkHookChannelSessionStartBoard(b *testing.B) {
 		if out, err := loadBoardFromClone(dir, 14, time.Now()); err != nil || out == "" {
 			b.Fatalf("%v %q", err, out)
 		}
+	}
+}
+
+// A panic in the loader fails open: no board, exit unchanged.
+func TestHookChannelSessionStartBoardPanicFailsOpen(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	old := loadBoard
+	t.Cleanup(func() { loadBoard = old })
+	loadBoard = func(string, int, time.Time) (string, error) { panic("boom") }
+	if out := sessionStartBoard(t, projDir); out != "" {
+		t.Fatalf("got %q", out)
+	}
+}
+
+// F-0409 crit. 2: exactly 24 h is recent, 25 h is not; days round down.
+func TestFetchAgeNoticeBoundary(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fh := filepath.Join(repo, ".git", "FETCH_HEAD")
+	if err := os.WriteFile(fh, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for age, want := range map[time.Duration]string{
+		24 * time.Hour: "",
+		25 * time.Hour: "1 day(s) ago",
+		47 * time.Hour: "1 day(s) ago",
+		48 * time.Hour: "2 day(s) ago",
+	} {
+		at := now.Add(-age)
+		if err := os.Chtimes(fh, at, at); err != nil {
+			t.Fatal(err)
+		}
+		got := fetchAgeNotice(repo, now)
+		if (want == "") != (got == "") || !strings.Contains(got, want) {
+			t.Fatalf("age %v: got %q, want it to contain %q", age, got, want)
+		}
+	}
+}
+
+// TestHookChannelSessionStartOrder (F-0409): the F-0405 line, the board, the
+// age line and the channel block come out in that order, real loader.
+func TestHookChannelSessionStartOrder(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	t.Setenv("CLAUDE_ENV_FILE", "")
+	startBoundWork(t, projDir, repoDir, "sess-f0409", "Mexer no servidor")
+	b := startBoundWork(t, projDir, repoDir, "sess-other", "Revisar a interface")
+	seedChannel(t, repoDir, b, "pode consumir")
+	stale := filepath.Join(projDir, ".claude", "skills", "cerne-self-learning", "SKILL.md")
+	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fh := filepath.Join(repoDir, ".git", "FETCH_HEAD")
+	if err := os.WriteFile(fh, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-50 * time.Hour)
+	if err := os.Chtimes(fh, at, at); err != nil {
+		t.Fatal(err)
+	}
+	out := sessionStartBoard(t, projDir)
+	last := -1
+	for _, marker := range []string{"canonical skill(s) out of date", "## In progress", "last fetched 2 day(s) ago", "cerne channel:"} {
+		i := strings.Index(out, marker)
+		if i <= last {
+			t.Fatalf("%q out of order (at %d, previous %d):\n%s", marker, i, last, out)
+		}
+		last = i
 	}
 }

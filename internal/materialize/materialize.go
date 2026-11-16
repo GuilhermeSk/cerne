@@ -261,7 +261,7 @@ func MaterializeAt(repoDir, docsDir, scope string, okf bool, recentDays int, now
 	manifest := map[string]string{}
 	descs := map[string]string{} // entity id -> derived OKF description (okf only)
 	data := contextData{ProjectName: proj.Name}
-	data.boardData = BoardData(works, events, handoffs, now, recentDays)
+	data.boardData = boardDataOf(works, events, handoffs, now, recentDays)
 
 	var shown []store.Feature // in-scope, non-terminal features, for the epic breakdown
 	for _, state := range contextGroupOrder {
@@ -385,10 +385,10 @@ func MaterializeAt(repoDir, docsDir, scope string, okf bool, recentDays int, now
 	return manifest, nil
 }
 
-// BoardData builds the in-progress board from the works, events and handoffs of
+// boardDataOf builds the in-progress board from the works, events and handoffs of
 // a backend: active works, the idle ones folded into one line, and the pending
 // handoffs (F-0409: one builder for CONTEXT.md and the session start).
-func BoardData(works []store.Work, events []domain.Event, handoffs []store.Handoff, now time.Time, recentDays int) boardData {
+func boardDataOf(works []store.Work, events []domain.Event, handoffs []store.Handoff, now time.Time, recentDays int) boardData {
 	data := boardData{IdleDays: recentDays}
 	lastEvent := map[string]time.Time{}
 	for _, ev := range events {
@@ -457,7 +457,7 @@ func BoardData(works []store.Work, events []domain.Event, handoffs []store.Hando
 // RenderBoard is the board as text: the CONTEXT.md sections, or one line when
 // there is no active work nor pending handoff.
 func RenderBoard(works []store.Work, events []domain.Event, handoffs []store.Handoff, now time.Time, recentDays int) (string, error) {
-	data := BoardData(works, events, handoffs, now, recentDays)
+	data := boardDataOf(works, events, handoffs, now, recentDays)
 	tmpl, err := template.New("session").Parse(boardTemplate + `{{template "board" .}}`)
 	if err != nil {
 		return "", err

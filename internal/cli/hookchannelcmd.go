@@ -116,6 +116,11 @@ func sessionBoard(projectID string, recentDays int) string {
 	repoDir := filepath.Join(cacheDir, "repo")
 	done := make(chan string, 1)
 	go func() {
+		defer func() {
+			if recover() != nil { // a panic fails open too
+				done <- ""
+			}
+		}()
 		out, err := loadBoard(repoDir, recentDays, time.Now())
 		if err != nil {
 			out = ""
