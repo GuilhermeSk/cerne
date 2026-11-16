@@ -21,7 +21,7 @@ func saveWorkT(t *testing.T, repoDir string, w store.Work) {
 
 func workIDs(t *testing.T, db, q string) []string {
 	t.Helper()
-	res, err := SearchWorks(db, q, 5)
+	res, _, err := SearchWorks(db, q, 5)
 	if err != nil {
 		t.Fatalf("SearchWorks(%q): %v", q, err)
 	}
@@ -64,7 +64,7 @@ func TestWorksFoundByEachField(t *testing.T) {
 			t.Errorf("SearchWorks(%q) = %v, want [W-0001]", q, ids)
 		}
 	}
-	res, _ := SearchWorks(db, "orchard", 5)
+	res, _, _ := SearchWorks(db, "orchard", 5)
 	if r := res[0]; r.State != "done" || r.Actor != "ana@laptop" || r.Title != "rotacao de credencial do orchard" {
 		t.Errorf("result = %+v", r)
 	}
@@ -114,7 +114,7 @@ func TestSearchWorksOnIndexWithoutTable(t *testing.T) {
 	}
 	conn.Exec(`DROP TABLE works_fts`)
 	conn.Close()
-	if got, err := SearchWorks(db, "orchard", 5); err != nil || len(got) != 0 {
+	if got, _, err := SearchWorks(db, "orchard", 5); err != nil || len(got) != 0 {
 		t.Fatalf("SearchWorks on old index = %v, %v; want empty, nil", got, err)
 	}
 }
@@ -171,5 +171,49 @@ func TestUpdateOnOldIndexDoesNotCreateWorksTable(t *testing.T) {
 	}
 	if got := hits(t, db, "zebra"); len(got) != 1 {
 		t.Errorf("note not updated: %v", got)
+	}
+}
+
+// Round 2: terms are prefixes ("rota" finds "rotação"), all terms first, any
+// term as the fallback.
+func TestSearchWorksPrefixTerms(t *testing.T) {
+	repoDir := seedBackend(t)
+	saveWorkT(t, repoDir, store.Work{ID: "W-0001", Title: "Investigar rotação de senha do Postgres", State: domain.WorkDone, Actor: "ana"})
+	saveWorkT(t, repoDir, store.Work{ID: "W-0002", Title: "rotação dos segredos de client do Keycloak", State: domain.WorkDone, Actor: "ana"})
+	saveWorkT(t, repoDir, store.Work{ID: "W-0003", Title: "limpar o cache do Postgres", State: domain.WorkDone, Actor: "ana"})
+	db := filepath.Join(t.TempDir(), "index.db")
+	if err := Rebuild(repoDir, db, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	for q, want := range map[string][]string{
+		"postgres rota":   {"W-0001"},
+		"keycloak segred": {"W-0002"},
+		"rotacao":         {"W-0001", "W-0002"},
+	} {
+		got := workIDs(t, db, q)
+		if len(got) != len(want) {
+			t.Errorf("SearchWorks(%q) = %v, want %v", q, got, want)
+		}
+	}
+	// No work has every term: the any-term fallback answers.
+	if got := workIDs(t, db, "postgres keycloak"); len(got) != 3 {
+		t.Errorf("fallback = %v, want the 3 works with either term", got)
+	}
+}
+
+// Round 2: active first, then the title weighs far above the log.
+func TestSearchWorksRanking(t *testing.T) {
+	repoDir := seedBackend(t)
+	saveWorkT(t, repoDir, store.Work{ID: "W-0001", Title: "outro assunto", State: domain.WorkDone, Actor: "ana", Note: "kpack kpack kpack kpack"})
+	saveWorkT(t, repoDir, store.Work{ID: "W-0002", Title: "kpack", State: domain.WorkDone, Actor: "ana"})
+	saveWorkT(t, repoDir, store.Work{ID: "W-0003", Title: "coisa qualquer", State: domain.WorkActive, Actor: "ana", Note: "kpack"})
+	db := filepath.Join(t.TempDir(), "index.db")
+	if err := Rebuild(repoDir, db, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	got := workIDs(t, db, "kpack")
+	want := []string{"W-0003", "W-0002", "W-0001"}
+	if len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("order = %v, want %v", got, want)
 	}
 }

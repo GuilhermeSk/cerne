@@ -19,7 +19,7 @@ const (
 		work_id, state UNINDEXED, actor UNINDEXED, title, body)`
 	insertWorkSQL = `INSERT INTO works_fts (work_id, state, actor, title, body) VALUES (?, ?, ?, ?, ?)`
 	searchWorkSQL = `SELECT work_id, state, actor, title FROM works_fts
-		WHERE works_fts MATCH ? ORDER BY bm25(works_fts, 1.0, 0, 0, 4.0, 1.0) LIMIT ?`
+		WHERE works_fts MATCH ? ORDER BY (state = 'active') DESC, bm25(works_fts, 1.0, 0, 0, 10.0, 1.0) LIMIT ?`
 )
 
 // workRow is one work to insert: body joins the closing note, the handoff and
@@ -116,47 +116,72 @@ func insertWorkRows(tx *sql.Tx, rows []workRow) error {
 	return nil
 }
 
-// SearchWorks finds works matching query, best bm25 first, up to limit. Like
-// Search it retries a syntax error quoted, and a miss on a multi-keyword plain
-// query with the keywords ORed. An index built before works were indexed has
-// no table: that is no works, not an error.
-func SearchWorks(dbPath, query string, limit int) ([]WorkResult, error) {
+// SearchWorks finds works matching query and returns up to limit of them with
+// the total that match. Active works come first, then bm25 with the title
+// weighted far above the note, handoff and log. Plain words are prefix terms
+// ("rota" finds "rotação"): works with every term first, then, when none has
+// them all, works with any. FTS5 syntax in the query is passed as-is, retried
+// quoted on a syntax error. An index built before works were indexed has no
+// table: that is no works, not an error.
+func SearchWorks(dbPath, query string, limit int) (works []WorkResult, total int, err error) {
 	if _, err := os.Stat(dbPath); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	db, err := openDB(dbPath)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer db.Close()
-	res, err := runWorkQuery(db, query, limit)
-	if err != nil {
-		res, err = runWorkQuery(db, quotePhrase(query), limit)
-	}
-	if err == nil && len(res) == 0 && !ftsSyntax.MatchString(query) && len(keywordTerms(query)) >= 2 {
-		res, err = runWorkQuery(db, Keywords(query), limit)
+	for _, m := range workMatches(query) {
+		works, total, err = runWorkQuery(db, m, limit)
+		if err != nil && ftsSyntax.MatchString(query) {
+			works, total, err = runWorkQuery(db, quotePhrase(query), limit)
+		}
+		if err != nil || total > 0 {
+			break
+		}
 	}
 	if err != nil && strings.Contains(err.Error(), "no such table") {
-		return nil, nil
+		return nil, 0, nil
 	}
-	return res, err
+	return works, total, err
 }
 
-func runWorkQuery(db *sql.DB, query string, limit int) ([]WorkResult, error) {
-	rows, err := db.Query(searchWorkSQL, query, limit)
+// workMatches is the MATCH expressions to try, in order.
+func workMatches(query string) []string {
+	terms := keywordTerms(query)
+	if ftsSyntax.MatchString(query) || len(terms) == 0 {
+		return []string{query, quotePhrase(query)}
+	}
+	for i, t := range terms {
+		terms[i] = quotePhrase(t) + "*"
+	}
+	out := []string{strings.Join(terms, " ")}
+	if len(terms) > 1 {
+		out = append(out, strings.Join(terms, " OR "))
+	}
+	return out
+}
+
+func runWorkQuery(db *sql.DB, match string, limit int) ([]WorkResult, int, error) {
+	var total int
+	if err := db.QueryRow(`SELECT count(*) FROM works_fts WHERE works_fts MATCH ?`, match).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := db.Query(searchWorkSQL, match, limit)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	var out []WorkResult
 	for rows.Next() {
 		var r WorkResult
 		if err := rows.Scan(&r.ID, &r.State, &r.Actor, &r.Title); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 // HasWorks reports whether the index at dbPath has the works table; an index

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -201,5 +202,71 @@ func TestSearchRebuildsIndexWithoutWorksTableOnce(t *testing.T) {
 	}
 	if !strings.Contains(out, "W-9999") {
 		t.Fatalf("a current index was rebuilt:\n%s", out)
+	}
+}
+
+// manyWorksFixture: seven active works about kpack, none in any document.
+func manyWorksFixture(t *testing.T) string {
+	t.Helper()
+	projDir := perDocFixture(t)
+	ctx, err := resolvePaths(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitBackend(t, ctx.repoDir)
+	for i := 1; i <= 7; i++ {
+		if out, err := execCerne(t, "work", "start", fmt.Sprintf("Mexer no kpack %d", i), "--agent", "ana", "--dir", projDir); err != nil {
+			t.Fatalf("work start: %v\n%s", err, out)
+		}
+	}
+	return projDir
+}
+
+// Round 2: a capped group never hides silently; --json carries the total.
+func TestSearchWorksMoreLineAndTotal(t *testing.T) {
+	projDir := manyWorksFixture(t)
+	out, err := execCerne(t, "search", "kpack", "--dir", projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(out, "] ana — Mexer no kpack"); got != 5 {
+		t.Fatalf("shown = %d, want 5:\n%s", got, out)
+	}
+	if !strings.Contains(out, "… 2 more works match — cerne search --works \"kpack\"\n") {
+		t.Fatalf("no more line:\n%s", out)
+	}
+	js, err := execCerne(t, "search", "kpack", "--json", "--dir", projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Works      []map[string]any `json:"works"`
+		WorksTotal int              `json:"works_total"`
+	}
+	if err := json.Unmarshal([]byte(js), &m); err != nil || len(m.Works) != 5 || m.WorksTotal != 7 {
+		t.Fatalf("works = %d, total = %d, err = %v", len(m.Works), m.WorksTotal, err)
+	}
+}
+
+// Round 2: --works prints only the works group, past the default cap.
+func TestSearchWorksFlag(t *testing.T) {
+	projDir := manyWorksFixture(t)
+	out, stderr, err := execCerneSplit(t, "search", "--works", "kpack", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	if got := strings.Count(out, "] ana — Mexer no kpack"); got != 7 {
+		t.Fatalf("listed = %d, want 7:\n%s", got, out)
+	}
+	if strings.Contains(out, "F-0001") || strings.Contains(out, "more works") {
+		t.Fatalf("--works must print only works:\n%s", out)
+	}
+	none, _, err := execCerneSplit(t, "search", "--works", "inexistente", "--dir", projDir)
+	if err != nil || !strings.Contains(none, "No works match") {
+		t.Fatalf("empty = %q, %v", none, err)
+	}
+	js, _, err := execCerneSplit(t, "search", "--works", "kpack", "--json", "--dir", projDir)
+	if err != nil || !strings.Contains(js, `"works_total": 7`) || strings.Contains(js, `"results"`) {
+		t.Fatalf("json = %s, %v", js, err)
 	}
 }
