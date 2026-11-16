@@ -2,16 +2,22 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/henriquesakata/cerne/internal/domain"
 	"github.com/henriquesakata/cerne/internal/hooks"
+	"github.com/henriquesakata/cerne/internal/materialize"
 	"github.com/henriquesakata/cerne/internal/project"
 	"github.com/henriquesakata/cerne/internal/room"
 	"github.com/henriquesakata/cerne/internal/skills"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 func sessionStartJSON(t *testing.T, sess, cwd string) string {
@@ -61,6 +67,7 @@ func TestHookChannelExportsSession(t *testing.T) {
 // session's pending channel block as plain text (the script's stdout is plain
 // text — JSON would break it), then nothing; a corrupt channel is silence.
 func TestHookChannelSessionStart(t *testing.T) {
+	boardOff(t)
 	projDir, _, repoDir := setupProject(t)
 	t.Setenv("CLAUDE_ENV_FILE", "")
 	startBoundWork(t, projDir, repoDir, "sess-a", "Mexer no servidor")
@@ -114,6 +121,7 @@ func TestHookSessionContextIncludesChannel(t *testing.T) {
 // session id and a context that will be thrown away, so it gets a peek — it
 // records what it was shown but never moves the parent's watermark.
 func TestHookChannelSubagentPeek(t *testing.T) {
+	boardOff(t)
 	projDir, _, repoDir := setupProject(t)
 	t.Setenv("CLAUDE_ENV_FILE", "")
 	startBoundWork(t, projDir, repoDir, "sess-a", "Mexer no servidor")
@@ -230,7 +238,24 @@ func TestHookEnvelopeEscapesControlChars(t *testing.T) {
 func sessionStart(t *testing.T, projDir string) string {
 	t.Helper()
 	t.Setenv("CLAUDE_ENV_FILE", "")
-	out, err := execCerneStdin(t, sessionStartJSON(t, "sess-f0405", projDir), "hook", "channel", "--point", "session-start")
+	boardOff(t)
+	return sessionStartBoard(t, projDir)
+}
+
+// boardOff makes the session-start board load fail, so tests of the other
+// session-start output see zero bytes of board.
+func boardOff(t *testing.T) {
+	t.Helper()
+	old := loadBoard
+	loadBoard = func(string, int, time.Time) (string, error) { return "", errors.New("board off") }
+	t.Cleanup(func() { loadBoard = old })
+}
+
+// sessionStartBoard is sessionStart with the real board loader.
+func sessionStartBoard(t *testing.T, projDir string) string {
+	t.Helper()
+	t.Setenv("CLAUDE_ENV_FILE", "")
+	out, err := execCerneStdin(t, sessionStartJSON(t, "sess-f0409", projDir), "hook", "channel", "--point", "session-start")
 	if err != nil {
 		t.Fatalf("hook channel: %v\n%s", err, out)
 	}
@@ -377,5 +402,236 @@ func TestHookChannelSessionStartUnreadableIsUnknown(t *testing.T) {
 			t.Fatalf("sync_skills=%v: unreadable skill must be silent, got %q", on, out)
 		}
 		os.Chmod(skill, 0o644)
+	}
+}
+
+// boardSection cuts the "In progress" and "Pending handoffs" sections out of a
+// generated CONTEXT.md.
+func boardSection(t *testing.T, ctx string) string {
+	t.Helper()
+	a, b := strings.Index(ctx, "## In progress"), strings.Index(ctx, "## Features")
+	if a < 0 || b < a {
+		t.Fatalf("no board in CONTEXT.md:\n%s", ctx)
+	}
+	return ctx[a:b]
+}
+
+// TestHookChannelSessionStartBoard (F-0409 crit. 1): session start prints the
+// board read from the clone, equal as a whole to the CONTEXT.md sections
+// generated from the same clone with the same now and the same recent window
+// (cfg.RecentWorkWindowDays(), the source `pull` uses), on a fixture with an
+// active work, an idle work and pending handoffs.
+func TestHookChannelSessionStartBoard(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	cfg, _, err := project.LoadConfig(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.RecentWorkDays = 3
+	if err := project.SaveConfig(projDir, cfg); err != nil {
+		t.Fatal(err)
+	}
+	days := cfg.RecentWorkWindowDays()
+	now := time.Now().UTC()
+	for _, w := range []store.Work{
+		{ID: "W-0001", Title: "Mexer no servidor", State: domain.WorkActive, Actor: "a", CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)},
+		{ID: "W-0002", Title: "Parado", State: domain.WorkActive, Actor: "a", CreatedAt: now.AddDate(0, 0, -5), UpdatedAt: now.AddDate(0, 0, -5)},
+	} {
+		if err := store.SaveWork(repoDir, w); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, from := range []string{"W-0001", "W-0009"} {
+		at := now.Add(-time.Duration(i+2) * time.Hour)
+		h := store.Handoff{ID: fmt.Sprintf("HO-%04d", i+1), State: domain.HandoffPending, FromWork: from, Actor: "agent:a@b", CreatedAt: at, UpdatedAt: at}
+		if err := store.SaveHandoff(repoDir, h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := loadBoard
+	loadBoard = func(dir string, d int, _ time.Time) (string, error) { return old(dir, d, now) }
+	t.Cleanup(func() { loadBoard = old })
+
+	docs := filepath.Join(t.TempDir(), ".docs")
+	if _, err := materialize.MaterializeAt(repoDir, docs, "", false, days, now); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := os.ReadFile(filepath.Join(docs, "CONTEXT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.TrimLeft(boardSection(t, string(ctx)), "\n")
+	want = strings.TrimRight(want, "\n") + "\n"
+	out := sessionStartBoard(t, projDir)
+	if out != want || !strings.Contains(out, "idle for over 3 days") || !strings.Contains(out, "## Pending handoffs") {
+		t.Fatalf("board differs from CONTEXT.md sections\nwant:\n%s\ngot:\n%s", want, out)
+	}
+}
+
+// F-0409 crit. 4: no active work is one line, not silence.
+func TestHookChannelSessionStartBoardEmpty(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	if out := sessionStartBoard(t, projDir); out != "- no active work\n" {
+		t.Fatalf("got %q", out)
+	}
+}
+
+// F-0409 crit. 3: a failing or stalled load prints no board and exits 0.
+func TestHookChannelSessionStartBoardFailOpen(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	old, oldD := loadBoard, boardDeadline
+	t.Cleanup(func() { loadBoard, boardDeadline = old, oldD })
+	loadBoard = func(string, int, time.Time) (string, error) { return "", errors.New("boom") }
+	if out := sessionStartBoard(t, projDir); out != "" {
+		t.Fatalf("error must print no board, got %q", out)
+	}
+	boardDeadline = 50 * time.Millisecond
+	loadBoard = func(string, int, time.Time) (string, error) { time.Sleep(2 * time.Second); return "late\n", nil }
+	start := time.Now()
+	if out := sessionStartBoard(t, projDir); out != "" || time.Since(start) > time.Second {
+		t.Fatalf("stalled load: out %q after %v", out, time.Since(start))
+	}
+}
+
+// F-0409 crit. 6: the subagent point prints no board.
+func TestHookChannelSubagentNoBoard(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	t.Setenv("CLAUDE_ENV_FILE", "")
+	out, err := execCerneStdin(t, sessionStartJSON(t, "sess-sub", projDir), "hook", "channel", "--point", "subagent")
+	if err != nil || out != "" {
+		t.Fatalf("subagent: %v %q", err, out)
+	}
+}
+
+// F-0409 crit. 2: a clone fetched more than 24 h ago is flagged after the
+// board; a recent fetch, or none recorded, prints nothing extra.
+func TestHookChannelSessionStartBoardFetchAge(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	fh := filepath.Join(repoDir, ".git", "FETCH_HEAD")
+	if err := os.WriteFile(fh, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set := func(age time.Duration) {
+		at := time.Now().Add(-age)
+		if err := os.Chtimes(fh, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(time.Hour)
+	if out := sessionStartBoard(t, projDir); out != "- no active work\n" {
+		t.Fatalf("recent fetch: %q", out)
+	}
+	set(50 * time.Hour)
+	want := "- no active work\ncerne: the shared clone was last fetched 2 day(s) ago — run `cerne pull` to refresh it.\n"
+	if out := sessionStartBoard(t, projDir); out != want {
+		t.Fatalf("old fetch: got %q want %q", out, want)
+	}
+	os.Remove(fh)
+	if out := sessionStartBoard(t, projDir); out != "- no active work\n" {
+		t.Fatalf("no FETCH_HEAD: %q", out)
+	}
+}
+
+// BenchmarkHookChannelSessionStartBoard (F-0409 crit. 3): what the board adds
+// to the session-start contact point — load + render — on a fixture backend
+// with 300 works (60 active) and 3000 events.
+func BenchmarkHookChannelSessionStartBoard(b *testing.B) {
+	dir := b.TempDir()
+	if err := store.InitLayout(dir, store.Project{Name: "Bench"}); err != nil {
+		b.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for i := 1; i <= 300; i++ {
+		st := domain.WorkDone
+		if i%5 == 0 {
+			st = domain.WorkActive
+		}
+		at := now.Add(-time.Duration(i) * time.Hour)
+		w := store.Work{ID: fmt.Sprintf("W-%04d", i), Title: "bench work", State: st, Actor: "agent", CreatedAt: at, UpdatedAt: at}
+		if err := store.SaveWork(dir, w); err != nil {
+			b.Fatal(err)
+		}
+	}
+	for i := 0; i < 3000; i++ {
+		ev := domain.Event{ID: fmt.Sprintf("e-%d", i), At: now.Add(-time.Duration(i) * time.Minute), EntityID: "F-0001", Type: "feature.doc_edited", Actor: "x"}
+		if err := store.AppendEvent(dir, ev); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if out, err := loadBoardFromClone(dir, 14, time.Now()); err != nil || out == "" {
+			b.Fatalf("%v %q", err, out)
+		}
+	}
+}
+
+// A panic in the loader fails open: no board, exit unchanged.
+func TestHookChannelSessionStartBoardPanicFailsOpen(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	old := loadBoard
+	t.Cleanup(func() { loadBoard = old })
+	loadBoard = func(string, int, time.Time) (string, error) { panic("boom") }
+	if out := sessionStartBoard(t, projDir); out != "" {
+		t.Fatalf("got %q", out)
+	}
+}
+
+// F-0409 crit. 2: exactly 24 h is recent, 25 h is not; days round down.
+func TestFetchAgeNoticeBoundary(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fh := filepath.Join(repo, ".git", "FETCH_HEAD")
+	if err := os.WriteFile(fh, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for age, want := range map[time.Duration]string{
+		24 * time.Hour: "",
+		25 * time.Hour: "1 day(s) ago",
+		47 * time.Hour: "1 day(s) ago",
+		48 * time.Hour: "2 day(s) ago",
+	} {
+		at := now.Add(-age)
+		if err := os.Chtimes(fh, at, at); err != nil {
+			t.Fatal(err)
+		}
+		got := fetchAgeNotice(repo, now)
+		if (want == "") != (got == "") || !strings.Contains(got, want) {
+			t.Fatalf("age %v: got %q, want it to contain %q", age, got, want)
+		}
+	}
+}
+
+// TestHookChannelSessionStartOrder (F-0409): the F-0405 line, the board, the
+// age line and the channel block come out in that order, real loader.
+func TestHookChannelSessionStartOrder(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	t.Setenv("CLAUDE_ENV_FILE", "")
+	startBoundWork(t, projDir, repoDir, "sess-f0409", "Mexer no servidor")
+	b := startBoundWork(t, projDir, repoDir, "sess-other", "Revisar a interface")
+	seedChannel(t, repoDir, b, "pode consumir")
+	stale := filepath.Join(projDir, ".claude", "skills", "cerne-self-learning", "SKILL.md")
+	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fh := filepath.Join(repoDir, ".git", "FETCH_HEAD")
+	if err := os.WriteFile(fh, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-50 * time.Hour)
+	if err := os.Chtimes(fh, at, at); err != nil {
+		t.Fatal(err)
+	}
+	out := sessionStartBoard(t, projDir)
+	last := -1
+	for _, marker := range []string{"canonical skill(s) out of date", "## In progress", "last fetched 2 day(s) ago", "cerne channel:"} {
+		i := strings.Index(out, marker)
+		if i <= last {
+			t.Fatalf("%q out of order (at %d, previous %d):\n%s", marker, i, last, out)
+		}
+		last = i
 	}
 }

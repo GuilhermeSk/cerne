@@ -13,9 +13,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/gitback"
 	"github.com/henriquesakata/cerne/internal/hooks"
+	"github.com/henriquesakata/cerne/internal/materialize"
 	"github.com/henriquesakata/cerne/internal/project"
 	"github.com/henriquesakata/cerne/internal/skills"
+	"github.com/henriquesakata/cerne/internal/store"
 )
 
 // Channel contact-point plumbing (F-0325), run by the SessionStart and
@@ -68,6 +71,73 @@ func newHookEnvelopeCmd() *cobra.Command {
 	return cmd
 }
 
+// boardDeadline bounds the session-start board (F-0409 crit. 3); loadBoard is
+// a variable so tests can fail or stall it.
+var (
+	boardDeadline = 2 * time.Second
+	loadBoard     = loadBoardFromClone
+)
+
+// loadBoardFromClone renders the in-progress board from the shared clone.
+func loadBoardFromClone(repoDir string, recentDays int, now time.Time) (string, error) {
+	works, err := store.LoadAllWorks(repoDir)
+	if err != nil {
+		return "", err
+	}
+	handoffs, err := store.LoadAllHandoffs(repoDir)
+	if err != nil {
+		return "", err
+	}
+	events, err := store.ReadEvents(repoDir)
+	if err != nil {
+		return "", err
+	}
+	return materialize.RenderBoard(works, events, handoffs, now, recentDays)
+}
+
+// fetchAgeNotice flags a clone last fetched more than 24 h ago (F-0409 crit. 2):
+// the board is only as new as the clone. "" when recent or never fetched.
+func fetchAgeNotice(repoDir string, now time.Time) string {
+	at, ok := gitback.FetchedAt(repoDir)
+	if !ok || now.Sub(at) <= 24*time.Hour {
+		return ""
+	}
+	h := int(now.Sub(at).Hours())
+	return fmt.Sprintf("cerne: the shared clone was last fetched %d day(s) ago — run `cerne pull` to refresh it.\n", h/24)
+}
+
+// sessionBoard is the board of the project's clone, "" on any error or after
+// boardDeadline (fail-open, N-0021).
+func sessionBoard(projectID string, recentDays int) string {
+	cacheDir, err := project.CacheDir(projectID)
+	if err != nil {
+		return ""
+	}
+	repoDir := filepath.Join(cacheDir, "repo")
+	done := make(chan string, 1)
+	go func() {
+		defer func() {
+			if recover() != nil { // a panic fails open too
+				done <- ""
+			}
+		}()
+		out, err := loadBoard(repoDir, recentDays, time.Now())
+		if err != nil {
+			out = ""
+		}
+		done <- out
+	}()
+	select {
+	case out := <-done:
+		if out != "" {
+			out += fetchAgeNotice(repoDir, time.Now())
+		}
+		return out
+	case <-time.After(boardDeadline):
+		return ""
+	}
+}
+
 func runHookChannel(cmd *cobra.Command, point string) {
 	in, err := decodeHookInput(cmd.InOrStdin())
 	if err != nil {
@@ -88,6 +158,7 @@ func runHookChannel(cmd *cobra.Command, point string) {
 	}
 	if consume {
 		fmt.Fprint(cmd.OutOrStdout(), staleManagedNotice(projDir, cfg.SyncSkills))
+		fmt.Fprint(cmd.OutOrStdout(), sessionBoard(cfg.ProjectID, cfg.RecentWorkWindowDays()))
 	}
 	fmt.Fprint(cmd.OutOrStdout(), channelBlock(cfg.ProjectID, in.SessionID, consume))
 }
