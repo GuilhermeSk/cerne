@@ -5,10 +5,31 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/henriquesakata/cerne/internal/lint"
 	"github.com/henriquesakata/cerne/internal/project"
 )
+
+// linkFile is a variable so a test can force the copy fallback (F-0404).
+var linkFile = os.Link
+
+// staleTreeAge is how old an orphaned stagedlint-* tree must be to be swept.
+const staleTreeAge = 24 * time.Hour
+
+// sweepStaleTrees removes stagedlint-* trees a crashed run left in cacheDir.
+func sweepStaleTrees(cacheDir string) {
+	ents, _ := os.ReadDir(cacheDir)
+	for _, e := range ents {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "stagedlint-") {
+			continue
+		}
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > staleTreeAge {
+			_ = os.RemoveAll(filepath.Join(cacheDir, e.Name()))
+		}
+	}
+}
 
 // copyTree is a variable so a test can prove the no-edits path never copies (F-0393).
 var copyTree = linkTreeFiles
@@ -39,6 +60,7 @@ func stagedLintRoot(repoDir, projDir string, skipEmpty bool) (string, stagedEdit
 	}
 	// Beside the clone, same volume, so hard links work (F-0404); os.TempDir
 	// only when the cache dir is not writable.
+	sweepStaleTrees(filepath.Dir(repoDir))
 	root, err := os.MkdirTemp(filepath.Dir(repoDir), "stagedlint-")
 	if err != nil {
 		root, err = os.MkdirTemp("", "cerne-stagedlint-")
@@ -147,7 +169,7 @@ func linkTreeFiles(src, dst string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		if os.Link(p, target) == nil {
+		if linkFile(p, target) == nil {
 			return nil
 		}
 		data, err := os.ReadFile(p)

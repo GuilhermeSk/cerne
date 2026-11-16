@@ -52,6 +52,9 @@ func newLintCmd() *cobra.Command {
 	return cmd
 }
 
+// concurrentPasses is false only in a test that captures the sequential output (F-0404).
+var concurrentPasses = true
+
 // projectLint is a variable so a test can prove the no-edits path never lints (F-0393).
 var projectLint = app.ProjectLint
 
@@ -98,7 +101,7 @@ func runLint(cmd *cobra.Command, dir string, fixTasks, staged, all, scoped bool,
 	// the sequential code used to run it, so errors keep their order. A cache of
 	// the base by HEAD is out: time-based rules would age inside it.
 	var baseCh chan basePass
-	if editOnly {
+	if editOnly && concurrentPasses {
 		baseCh = make(chan basePass, 1)
 		go func() { baseCh <- lintBase(edits.base, dir, cfg) }()
 	}
@@ -156,7 +159,12 @@ func runLint(cmd *cobra.Command, dir string, fixTasks, staged, all, scoped bool,
 	// (F-0382, the before x after of golangci-lint's new-from-rev).
 	var otherCount, fixedCount int
 	if editOnly {
-		bp := <-baseCh
+		var bp basePass
+		if baseCh != nil {
+			bp = <-baseCh
+		} else {
+			bp = lintBase(edits.base, dir, cfg)
+		}
 		if bp.err != nil {
 			return bp.err
 		}
