@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -162,10 +163,10 @@ func TestBackfillRolesReports(t *testing.T) {
 		t.Errorf("Unattributed = %d, want 1", r.Unattributed)
 	}
 	if want := []Ambiguity{
-		{Session: "s4", Agent: "a", Role: "critic", Entities: []string{"F-0002", "F-0003"}},
-		{Session: "s8", Agent: "a", Role: "judge", Entities: []string{"F-0008", "F-0009"}},
-		{Session: "s9", Agent: "a", Role: "critic", Entities: []string{"E-0001", "F-0010"}},
-		{Session: "s9", Agent: "b", Role: "critic", Entities: []string{"F-0010", "W-0001"}},
+		{Session: "s4", Agent: "a", Role: "critic", Entities: []string{"F-0002", "F-0003"}, Reason: reasonBinding},
+		{Session: "s8", Agent: "a", Role: "judge", Entities: []string{"F-0008", "F-0009"}, Reason: reasonBinding},
+		{Session: "s9", Agent: "a", Role: "critic", Entities: []string{"E-0001", "F-0010"}, Reason: reasonBinding},
+		{Session: "s9", Agent: "b", Role: "critic", Entities: []string{"F-0010", "W-0001"}, Reason: reasonBinding},
 	}; !reflect.DeepEqual(r.Ambiguous, want) {
 		t.Errorf("Ambiguous = %+v, want %+v", r.Ambiguous, want)
 	}
@@ -268,5 +269,113 @@ func TestAttributeOtherUndoesABackfilledRole(t *testing.T) {
 	}
 	if b, err := BackfillRoles(in, time.Time{}); err != nil || len(b.Features)+len(b.NoAnchor) != 0 {
 		t.Errorf("backfill after the undo: %+v, %v; want nothing", b, err)
+	}
+}
+
+// TestBackfillRolesLeavesOutWhatThePromptShowsElsewhere (F-0411 crit. 1-4): the
+// prompt only takes a subagent out of the binding's feature, never puts one in.
+func TestBackfillRolesLeavesOutWhatThePromptShowsElsewhere(t *testing.T) {
+	in := fixture(t)
+	big := cc(1000, 1000, 1000, 1000)
+	for _, id := range []string{"F-0101", "F-0201", "F-0301"} {
+		anchored(t, in, id, domain.StateImplemented, big, nil)
+	}
+	judgeAsk, verdict := "Read /tmp/a.md", "ok\nVEREDITO: A"
+	one := cc(1, 0, 0, 1)
+
+	// An orchestrator bound to F-0101 convenes reviewers of other features.
+	mainMsg(t, in, "t1")
+	bindAt(t, in.CacheDir, "t1", "", "F-0101", at(1))
+	subagent(t, in, "t1", "c1", "Review F-0102\n"+diffFence, "", 3, one)
+	subagent(t, in, "t1", "c2", "Review F-0103 and F-0102\n"+diffFence, "", 3, one)
+	subagent(t, in, "t1", "c3", "Review F-0101\n"+diffFence, "", 3, one) // cites only the binding: stays
+	subagent(t, in, "t1", "j", judgeAsk, verdict, 5, one)                // blind, mixed binding
+	subagent(t, in, "t1", "c4", "Review F-0101 and F-0104\n"+diffFence, "", 3, one)
+
+	// A binding whose prompts cite only its own feature: the blind judge stays.
+	mainMsg(t, in, "t2")
+	bindAt(t, in.CacheDir, "t2", "", "F-0201", at(1))
+	subagent(t, in, "t2", "c", "Review F-0201\n"+diffFence, "", 3, one)
+	subagent(t, in, "t2", "j", judgeAsk, verdict, 5, one)
+
+	// An explicit role bind beats the prompt.
+	mainMsg(t, in, "t3")
+	bindAt(t, in.CacheDir, "t3", "", "F-0301", at(1))
+	subagent(t, in, "t3", "c", "Review F-0302\n"+diffFence, "", 3, one)
+	if err := AppendBind(in.CacheDir, Bind{Session: "t3", Agent: "c", Entity: "F-0301", Harness: HarnessClaudeCode, Role: "critic", Retro: true, TS: at(20)}); err != nil {
+		t.Fatal(err)
+	}
+
+	// F-0411 review: ids inside a code fence (an embedded diff) are no citation.
+	anchored(t, in, "F-0401", domain.StateImplemented, big, nil)
+	mainMsg(t, in, "t4")
+	bindAt(t, in.CacheDir, "t4", "", "F-0401", at(1))
+	subagent(t, in, "t4", "c", "Review F-0401\n```diff\n+ // see F-0402\n```\n"+diffFence, "", 3, one)
+
+	// One sibling cites one other feature (union == {other}): the blind judge stays.
+	anchored(t, in, "F-0501", domain.StateImplemented, big, nil)
+	mainMsg(t, in, "t5")
+	bindAt(t, in.CacheDir, "t5", "", "F-0501", at(1))
+	subagent(t, in, "t5", "c", "Review F-0502\n"+diffFence, "", 3, one)
+	subagent(t, in, "t5", "j", judgeAsk, verdict, 5, one)
+
+	// A bound subagent citing another feature does not make the unbound judge ambiguous.
+	anchored(t, in, "F-0601", domain.StateImplemented, big, nil)
+	mainMsg(t, in, "t6")
+	bindAt(t, in.CacheDir, "t6", "", "F-0601", at(1))
+	subagent(t, in, "t6", "c", "Review F-0602\n"+diffFence, "", 3, one)
+	if err := AppendBind(in.CacheDir, Bind{Session: "t6", Agent: "c", Entity: "F-0601", Harness: HarnessClaudeCode, Role: "critic", Retro: true, TS: at(20)}); err != nil {
+		t.Fatal(err)
+	}
+	subagent(t, in, "t6", "j", judgeAsk, verdict, 5, one)
+
+	// An epic binding: the new rules do not apply.
+	mainMsg(t, in, "t7")
+	bindAt(t, in.CacheDir, "t7", "", "E-0701", at(1))
+	subagent(t, in, "t7", "c", "Review F-0702\n"+diffFence, "", 3, one)
+
+	r, err := BackfillRoles(in, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(r.NoAnchor, "E-0701") {
+		t.Errorf("NoAnchor = %v: the epic binding keeps its critic, the new rules skip it", r.NoAnchor)
+	}
+	got := map[string][]AgentRole{}
+	for _, f := range r.Features {
+		got[f.ID] = f.Agents
+	}
+	if want := []AgentRole{{Session: "t1", Agent: "c3", Role: "critic"}}; !reflect.DeepEqual(got["F-0101"], want) {
+		t.Errorf("F-0101 agents = %+v, want %+v", got["F-0101"], want)
+	}
+	if want := []AgentRole{{Session: "t2", Agent: "c", Role: "critic"}, {Session: "t2", Agent: "j", Role: "judge"}}; !reflect.DeepEqual(got["F-0201"], want) {
+		t.Errorf("F-0201 agents = %+v, want %+v", got["F-0201"], want)
+	}
+	if want := []AgentRole{{Session: "t3", Agent: "c", Role: "critic", Bound: true}}; !reflect.DeepEqual(got["F-0301"], want) {
+		t.Errorf("F-0301 agents = %+v, want %+v", got["F-0301"], want)
+	}
+	for id := range got { // crit. 3: never a cited feature
+		if id == "F-0102" || id == "F-0103" || id == "F-0104" || id == "F-0302" {
+			t.Errorf("a subagent was attributed to cited %s", id)
+		}
+	}
+	for id, want := range map[string][]AgentRole{
+		"F-0401": {{Session: "t4", Agent: "c", Role: "critic"}},
+		"F-0501": {{Session: "t5", Agent: "j", Role: "judge"}},
+		"F-0601": {{Session: "t6", Agent: "c", Role: "critic", Bound: true}, {Session: "t6", Agent: "j", Role: "judge"}},
+	} {
+		if !reflect.DeepEqual(got[id], want) {
+			t.Errorf("%s agents = %+v, want %+v", id, got[id], want)
+		}
+	}
+	all := []string{"F-0101", "F-0102", "F-0103"}
+	if want := []Ambiguity{
+		{Session: "t1", Agent: "c1", Role: "critic", Entities: []string{"F-0101", "F-0102"}, Reason: reasonCites},
+		{Session: "t1", Agent: "c2", Role: "critic", Entities: all, Reason: reasonCites},
+		{Session: "t1", Agent: "c4", Role: "critic", Entities: []string{"F-0101", "F-0102", "F-0103", "F-0104"}, Reason: reasonMixed},
+		{Session: "t1", Agent: "j", Role: "judge", Entities: []string{"F-0101", "F-0102", "F-0103", "F-0104"}, Reason: reasonMixed},
+		{Session: "t5", Agent: "c", Role: "critic", Entities: []string{"F-0501", "F-0502"}, Reason: reasonCites},
+	}; !reflect.DeepEqual(r.Ambiguous, want) {
+		t.Errorf("Ambiguous = %+v\nwant %+v", r.Ambiguous, want)
 	}
 }
