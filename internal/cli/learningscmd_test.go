@@ -201,3 +201,75 @@ func TestAcceptAndErrataCanonicaliseTheID(t *testing.T) {
 		t.Fatalf("errata f-0002: %v\n%s", err, out)
 	}
 }
+
+// seedCutoffFeatures makes F-0001 (concluded before the triage cutoff) and
+// F-0002 (after it), both with learnings.
+func seedCutoffFeatures(t *testing.T) (projDir, repoDir string) {
+	t.Helper()
+	projDir, _, repoDir = setupProject(t)
+	seedResultFeatures(t, repoDir, domain.StateImplemented, domain.StateImplemented)
+	for id, at := range map[string]time.Time{"F-0001": time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC), "F-0002": time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)} {
+		writeDoc(t, repoDir, id, "result.md", realDoc(id, learnBody))
+		ev := domain.NewEvent(id, "feature.completed", nil, "t")
+		ev.At = at
+		if err := store.AppendEvent(repoDir, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commitBackend(t, repoDir)
+	return projDir, repoDir
+}
+
+// F-0406 crit. 1-4: the default window starts at the triage cutoff and counts the rest apart.
+func TestFeatureLearningsDefaultCutoff(t *testing.T) {
+	projDir, _ := seedCutoffFeatures(t)
+	out, err := execCerne(t, "feature", "learnings", "--dir", projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"F-0002", "1 feature(s), 2 item(s) pending triage", "1 older feature(s) not listed (concluded before 2026-11-13; --since 2026-01-01 lists them)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("default lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "F-0001  ") {
+		t.Errorf("default lists the old feature:\n%s", out)
+	}
+
+	out, _ = execCerne(t, "feature", "learnings", "--since", "2026-01-01", "--dir", projDir)
+	if !strings.Contains(out, "F-0001") || !strings.Contains(out, "F-0002") || strings.Contains(out, "older feature(s)") {
+		t.Errorf("--since must list both and print no older line:\n%s", out)
+	}
+	out, _ = execCerne(t, "feature", "learnings", "--feature", "F-0001", "--dir", projDir)
+	if !strings.Contains(out, "F-0001") || strings.Contains(out, "older feature(s)") {
+		t.Errorf("--feature must ignore the cutoff:\n%s", out)
+	}
+
+	out, _ = execCerne(t, "feature", "learnings", "--json", "--dir", projDir)
+	var rep app.LearningsReport
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Cutoff != "2026-11-13" || rep.OlderFeatures != 1 || rep.OlderItems != 2 || rep.TotalFeatures != 1 || rep.TotalItems != 2 {
+		t.Errorf("json = %+v", rep)
+	}
+}
+
+// F-0406 crit. 5: skipping a feature before the cutoff still records the event.
+func TestFeatureLearningsSkipBeforeCutoff(t *testing.T) {
+	projDir, repoDir := seedCutoffFeatures(t)
+	if out, err := execCerne(t, "feature", "learnings", "--skip", "F-0001", "--dir", projDir); err != nil {
+		t.Fatalf("skip: %v\n%s", err, out)
+	}
+	evs, err := store.ReadEvents(repoDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, ev := range evs {
+		found = found || ev.EntityID == "F-0001" && ev.Type == "feature.learnings_triaged"
+	}
+	if !found {
+		t.Error("no feature.learnings_triaged event for F-0001")
+	}
+}
