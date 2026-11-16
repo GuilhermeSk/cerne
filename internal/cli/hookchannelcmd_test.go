@@ -11,6 +11,7 @@ import (
 	"github.com/henriquesakata/cerne/internal/hooks"
 	"github.com/henriquesakata/cerne/internal/project"
 	"github.com/henriquesakata/cerne/internal/room"
+	"github.com/henriquesakata/cerne/internal/skills"
 )
 
 func sessionStartJSON(t *testing.T, sess, cwd string) string {
@@ -304,4 +305,36 @@ func TestHookChannelSessionStartStaleHooks(t *testing.T) {
 	if err != nil || sub != "" {
 		t.Fatalf("subagent point: %v %q, want silence", err, sub)
 	}
+}
+
+// BenchmarkHookChannelSessionStart (F-0405 crit. 5) measures what the feature
+// adds to the session-start contact point: the managed-asset staleness check,
+// with everything current and with one stale skill (sync_skills off, so the
+// stale case does not write).
+func BenchmarkHookChannelSessionStart(b *testing.B) {
+	proj := b.TempDir()
+	if _, err := skills.Install(proj); err != nil {
+		b.Fatal(err)
+	}
+	if _, err := hooks.Install(proj); err != nil {
+		b.Fatal(err)
+	}
+	b.Run("current", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if staleManagedNotice(proj, false) != "" {
+				b.Fatal("unexpected notice")
+			}
+		}
+	})
+	b.Run("stale-skill", func(b *testing.B) {
+		path := filepath.Join(proj, ".claude", "skills", "cerne-self-learning", "SKILL.md")
+		if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+			b.Fatal(err)
+		}
+		for i := 0; i < b.N; i++ {
+			if staleManagedNotice(proj, false) == "" {
+				b.Fatal("expected notice")
+			}
+		}
+	})
 }
