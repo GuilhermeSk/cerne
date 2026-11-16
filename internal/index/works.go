@@ -33,14 +33,24 @@ type WorkResult struct {
 	ID, State, Actor, Title string
 }
 
-func workRowOf(repoDir string, w store.Work) (workRow, error) {
-	handoff, _, err := readDoc(filepath.Join(repoDir, "content", "works", w.ID, "handoff.md"))
-	if err != nil {
-		return workRow{}, err
+// workRowOf reads a work's handoff and log. logged, when not nil, is the set of
+// works that have a log directory: the rest skip the lookup.
+func workRowOf(repoDir string, w store.Work, logged map[string]bool) (workRow, error) {
+	// HandoffAt is set whenever a handoff is written: without it there is no
+	// file, and probing for one costs a syscall per work.
+	var handoff string
+	if w.HandoffAt != nil {
+		var err error
+		if handoff, _, err = readDoc(filepath.Join(repoDir, "content", "works", w.ID, "handoff.md")); err != nil {
+			return workRow{}, err
+		}
 	}
-	log, err := store.LoadLog(repoDir, w.ID)
-	if err != nil {
-		return workRow{}, err
+	var log []store.LogEntry
+	if logged == nil || logged[w.ID] {
+		var err error
+		if log, err = store.LoadLog(repoDir, w.ID); err != nil {
+			return workRow{}, err
+		}
 	}
 	parts := []string{w.Note, handoff}
 	for _, e := range log {
@@ -54,9 +64,18 @@ func collectWorkRows(repoDir string) ([]workRow, error) {
 	if err != nil {
 		return nil, err
 	}
+	// One listing instead of one failed lookup per work with no log.
+	logged := map[string]bool{}
+	dirs, err := os.ReadDir(filepath.Join(repoDir, "content", "worklogs"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	for _, d := range dirs {
+		logged[d.Name()] = true
+	}
 	rows := make([]workRow, 0, len(works))
 	for _, w := range works {
-		r, err := workRowOf(repoDir, w)
+		r, err := workRowOf(repoDir, w, logged)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +98,7 @@ func collectWorkRowsFor(repoDir string, ids []string) ([]workRow, error) {
 		if err != nil {
 			return nil, err
 		}
-		r, err := workRowOf(repoDir, w)
+		r, err := workRowOf(repoDir, w, nil)
 		if err != nil {
 			return nil, err
 		}

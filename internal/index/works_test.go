@@ -35,8 +35,9 @@ func workIDs(t *testing.T, db, q string) []string {
 // seedWorks adds W-0001 (title, note, handoff, log) to a seeded backend.
 func seedWorks(t *testing.T, repoDir string) {
 	t.Helper()
+	now := time.Now().UTC()
 	saveWorkT(t, repoDir, store.Work{ID: "W-0001", Title: "rotacao de credencial do orchard",
-		State: domain.WorkDone, Actor: "ana@laptop", Note: "fechado com vaultkey novo"})
+		State: domain.WorkDone, Actor: "ana@laptop", Note: "fechado com vaultkey novo", HandoffAt: &now})
 	dir := filepath.Join(repoDir, "content", "works", "W-0001")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
