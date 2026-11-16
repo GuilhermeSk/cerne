@@ -24,6 +24,11 @@ const (
 // then, so earlier conclusions are counted apart, not listed (F-0406).
 var learningsTriageSince = time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
 
+// learningsHistoryHint is a date before any feature, for the "lists them" hint.
+var learningsHistoryHint = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+const learningsDay = "2006-01-02"
+
 func newFeatureLearningsCmd(dir *string) *cobra.Command {
 	var (
 		featureID, since, skip, reason string
@@ -40,7 +45,7 @@ func newFeatureLearningsCmd(dir *string) *cobra.Command {
 			"('cerne note new --informs F-NNNN'); find the existing note it may complement (cerne note list --path <file>, cerne search) " +
 			"and use 'cerne note errata', or replace it with 'cerne note substituir'. --skip F-NNNN [--reason \"...\"] records that nothing in " +
 			"that feature's learnings is durable. " +
-			"Without --since or --feature only features concluded since 2026-11-13 are listed and the older ones are counted; --since 2026-01-01 lists them.",
+			"Without --since or --feature only features concluded since " + learningsTriageSince.Format(learningsDay) + " are listed and the older ones are counted; --since " + learningsHistoryHint.Format(learningsDay) + " lists them.",
 		Example: "  cerne feature learnings                       # the 10 newest pending features\n" +
 			"  cerne feature learnings --all --json          # everything pending, machine-readable\n" +
 			"  cerne feature learnings --feature F-0123      # one feature\n" +
@@ -94,8 +99,8 @@ func runFeatureLearnings(cmd *cobra.Command, dir, featureID, since, skip, reason
 	if err != nil {
 		return err
 	}
-	if opts.CountOlder {
-		rep.Cutoff = opts.Since.Format("2006-01-02")
+	if !opts.Since.IsZero() {
+		rep.Cutoff = opts.Since.Format(learningsDay)
 	}
 	out := cmd.OutOrStdout()
 	if asJSON {
@@ -114,7 +119,7 @@ func runFeatureLearnings(cmd *cobra.Command, dir, featureID, since, skip, reason
 	}
 	fmt.Fprintln(out)
 	if rep.OlderFeatures > 0 {
-		fmt.Fprintf(out, "%d older feature(s) not listed (concluded before %s; --since 2026-01-01 lists them)\n", rep.OlderFeatures, rep.Cutoff)
+		fmt.Fprintf(out, "%d older feature(s) not listed (concluded before %s; --since %s lists them)\n", rep.OlderFeatures, rep.Cutoff, learningsHistoryHint.Format(learningsDay))
 	}
 	if len(rep.Features) > 0 {
 		fmt.Fprintln(out, learningsTail("F-NNNN"))

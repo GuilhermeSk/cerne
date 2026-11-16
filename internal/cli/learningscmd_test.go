@@ -232,7 +232,7 @@ func TestFeatureLearningsDefaultCutoff(t *testing.T) {
 			t.Errorf("default lacks %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "F-0001  ") {
+	if strings.Contains(out, "Feature F-0001") {
 		t.Errorf("default lists the old feature:\n%s", out)
 	}
 
@@ -249,6 +249,11 @@ func TestFeatureLearningsDefaultCutoff(t *testing.T) {
 	var rep app.LearningsReport
 	if err := json.Unmarshal([]byte(out), &rep); err != nil {
 		t.Fatal(err)
+	}
+	out2, _ := execCerne(t, "feature", "learnings", "--json", "--since", "2026-01-01", "--dir", projDir)
+	var rep2 app.LearningsReport
+	if err := json.Unmarshal([]byte(out2), &rep2); err != nil || rep2.Cutoff != "2026-01-01" {
+		t.Errorf("--since cutoff = %q (%v), want 2026-01-01", rep2.Cutoff, err)
 	}
 	if rep.Cutoff != "2026-11-13" || rep.OlderFeatures != 1 || rep.OlderItems != 2 || rep.TotalFeatures != 1 || rep.TotalItems != 2 {
 		t.Errorf("json = %+v", rep)
@@ -271,5 +276,17 @@ func TestFeatureLearningsSkipBeforeCutoff(t *testing.T) {
 	}
 	if !found {
 		t.Error("no feature.learnings_triaged event for F-0001")
+	}
+}
+
+// F-0406: an older feature already skipped does not count in the older line.
+func TestFeatureLearningsOlderLineSkipsTriaged(t *testing.T) {
+	projDir, _ := seedCutoffFeatures(t)
+	if out, err := execCerne(t, "feature", "learnings", "--skip", "F-0001", "--dir", projDir); err != nil {
+		t.Fatalf("skip: %v\n%s", err, out)
+	}
+	out, _ := execCerne(t, "feature", "learnings", "--dir", projDir)
+	if strings.Contains(out, "older feature(s)") {
+		t.Errorf("a skipped older feature is counted:\n%s", out)
 	}
 }

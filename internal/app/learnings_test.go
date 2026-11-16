@@ -285,3 +285,23 @@ func TestLearningsCountsOlderApart(t *testing.T) {
 		t.Errorf("older counted without CountOlder: %+v", r)
 	}
 }
+
+// F-0406: the cutoff boundary is inclusive, and Feature with a zero Since (the
+// post-complete path) lists a feature of any age.
+func TestLearningsCutoffBoundaryAndFeaturePath(t *testing.T) {
+	repoDir, _, _ := newFeatureBackend(t)
+	cut := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+	seedLearnFeature(t, repoDir, "F-0001", domain.StateImplemented, withLearnings, cut, "")
+	seedLearnFeature(t, repoDir, "F-0002", domain.StateImplemented, withLearnings, cut.Add(-time.Second), "")
+	r, err := Learnings(repoDir, LearningsOpts{All: true, Since: cut, CountOlder: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(listedIDs(r)) != "[F-0001]" || r.OlderFeatures != 1 {
+		t.Errorf("boundary: %v older=%d", listedIDs(r), r.OlderFeatures)
+	}
+	r, _ = Learnings(repoDir, LearningsOpts{All: true, Feature: "F-0002"})
+	if fmt.Sprint(listedIDs(r)) != "[F-0002]" {
+		t.Errorf("feature path: %v", listedIDs(r))
+	}
+}
