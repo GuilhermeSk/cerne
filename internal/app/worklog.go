@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -37,7 +38,7 @@ func AppendWorkLog(repoDir, projDir, work, actor, text string, corrects int, now
 		return store.LogEntry{}, fmt.Errorf("%w: %v", ErrLogPersonal, err)
 	}
 	work = strings.ToUpper(strings.TrimSpace(work))
-	by := resolveActor(defaultWorkActor())
+	by := recorder()
 	if actor == "" {
 		actor = by
 	}
@@ -74,6 +75,27 @@ func AppendWorkLog(repoDir, projDir, work, actor, text string, corrects int, now
 	return e, nil
 }
 
+// recorder is what a log entry stores as recorded_by (F-0407): the agent's
+// shortened session, "agent", or "human" — never user@host, which has the
+// shape of the e-mail the command itself refuses. Another explicit
+// CERNE_ACTOR is kept only when refusePersonal lets it through.
+func recorder() string {
+	switch a := actorEnv(); a {
+	case "":
+		return "human"
+	case legacyAgentActor:
+		if s := os.Getenv("CERNE_SESSION"); s != "" {
+			return agentActorPrefix + "session-" + s[:min(len(s), 8)]
+		}
+		return a
+	default:
+		if refusePersonal("", a) != nil {
+			return "human"
+		}
+		return a
+	}
+}
+
 // logZone is where entry times are shown: the reader's zone, never a fixed
 // one. A variable so tests can pin it (time.Local does not reload on a TZ
 // change at run time).
@@ -86,7 +108,53 @@ func LogTime(utc string) string {
 	if err != nil {
 		return utc
 	}
-	return t.In(logZone).Format("15:04 MST") + " (" + t.UTC().Format("15:04") + "Z)"
+	return t.In(logZone).Format("15:04 ") + zoneLabel(t.In(logZone)) + " (" + t.UTC().Format("15:04") + "Z)"
+}
+
+// brazilAbbr names the Brazilian zones by their usual abbreviation, which the
+// tzdata dropped in 2017 (it now says -03). Keyed by the zone's UTC offset in
+// hours; only used when the zone is Brazilian and its abbreviation is numeric.
+var brazilAbbr = map[int]string{-2: "FNT", -3: "BRT", -4: "AMT", -5: "ACT"}
+
+// zoneLabel is t's zone abbreviation, with a numeric one of a Brazilian zone
+// (F-0407) replaced by its usual name. Other zones are shown as the tzdata has them.
+func zoneLabel(t time.Time) string {
+	abbr, off := t.Zone()
+	if abbr == "" || (abbr[0] != '+' && abbr[0] != '-') || off%3600 != 0 {
+		return abbr
+	}
+	name := logZone.String()
+	if name == "Local" {
+		name = os.Getenv("TZ")
+		if name == "" {
+			if l, err := os.Readlink("/etc/localtime"); err == nil {
+				name = l
+			}
+		}
+	}
+	if !strings.Contains(name, "America/") {
+		return abbr
+	}
+	if l, ok := brazilAbbr[off/3600]; ok && brazilZone(name) {
+		return l
+	}
+	return abbr
+}
+
+// brazilZone reports whether a tz name (or a path ending in one) is Brazilian.
+func brazilZone(name string) bool {
+	for _, z := range brazilZones {
+		if strings.HasSuffix(name, z) {
+			return true
+		}
+	}
+	return false
+}
+
+var brazilZones = []string{
+	"Noronha", "Sao_Paulo", "Bahia", "Fortaleza", "Recife", "Belem", "Maceio",
+	"Araguaina", "Santarem", "Campo_Grande", "Cuiaba", "Porto_Velho", "Boa_Vista",
+	"Manaus", "Eirunepe", "Rio_Branco",
 }
 
 // RenderWorkLog lists entries in order, one per line, with the local date on a
