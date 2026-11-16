@@ -376,3 +376,45 @@ func TestLintStagedTreeParity(t *testing.T) {
 		t.Fatalf("tree findings differ from clone:\n got %v\nwant %v", key(got), key(want))
 	}
 }
+
+// F-0403 crit. 2: an edit that touches nothing a rule reads counts no finding as
+// fixed (the missing events/ made the clone's result findings look "fixed").
+func TestLintStagedUnrelatedEditFixesNothing(t *testing.T) {
+	projDir, _ := implementedNoGauntlet(t)
+	specPath := filepath.Join(projDir, ".docs", "current", "features", "F-0001-parcelamento", "spec.md")
+	b, _ := os.ReadFile(specPath)
+	mustWrite(t, specPath, string(b)+"\nmais uma linha\n")
+	for _, args := range [][]string{{"lint", "--staged"}, {"lint", "--staged", "--json"}} {
+		out, _ := execCerne(t, append(args, "--dir", projDir)...)
+		if strings.Contains(out, "fixed by your edits") || strings.Contains(out, `"fixed_count": `) && !strings.Contains(out, `"fixed_count": 0`) {
+			t.Fatalf("%v: unrelated edit must fix nothing:\n%s", args, out)
+		}
+	}
+}
+
+// F-0403 crit. 3: the engine over the staged tree sees the events, so a result
+// edit that drops the "## Gauntlet" section trips result-missing-gauntlet. (An
+// implemented feature's .docs result is frozen for push, so the edit is overlaid
+// on the assembled tree directly.)
+func TestLintStagedTreeGauntletGate(t *testing.T) {
+	projDir, repoDir := implementedNoGauntlet(t)
+	cfg, _, err := project.LoadConfig(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _, cleanup, err := stagedLintRoot(repoDir, projDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	got, err := projectLint(root, projDir, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range got {
+		if f.Rule == lint.RuleResultMissingGauntlet && f.Entity == "F-0003" {
+			return
+		}
+	}
+	t.Fatalf("staged tree lacks result-missing-gauntlet for F-0003: %v", got)
+}
