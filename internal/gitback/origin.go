@@ -27,26 +27,51 @@ func CheckOrigin(repoDir, backend string) error {
 	}
 	return fmt.Errorf("%w: the cache clone at %s has origin %s but this project declares backend %s; "+
 		"give this project its own CERNE_CACHE_DIR or a distinct project_id",
-		ErrForeignClone, repoDir, origin, backend)
+		ErrForeignClone, repoDir, redactURL(origin), redactURL(backend))
 }
 
-func sameBackend(a, b string) bool { return canonBackend(a) == canonBackend(b) }
+// redactURL drops the userinfo of a scheme URL (a token must not reach an
+// error message or an HTTP body); the scp form's "git@" is not a secret.
+func redactURL(u string) string {
+	scheme, rest, ok := strings.Cut(u, "://")
+	if !ok {
+		return u
+	}
+	return scheme + "://" + rest[strings.LastIndex(rest, "@")+1:]
+}
 
-// canonBackend folds the spellings of one repository together: file:// URLs,
-// "~", relative paths, symlinks and a trailing slash. Remote URLs are only
-// trimmed of the trailing slash.
-func canonBackend(u string) string {
-	u = strings.TrimSpace(u)
-	if rest, ok := strings.CutPrefix(u, "file://"); ok {
-		if p, err := url.PathUnescape(rest); err == nil {
-			u = p
-		} else {
-			u = rest
+func sameBackend(a, b string) bool {
+	a, b = fileURLToPath(strings.TrimSpace(a)), fileURLToPath(strings.TrimSpace(b))
+	la, lb := IsLocalPath(a), IsLocalPath(b)
+	if la != lb {
+		return false
+	}
+	if !la {
+		return canonRemote(a) == canonRemote(b)
+	}
+	a, b = expandLocal(a), expandLocal(b)
+	if fa, err := os.Stat(a); err == nil {
+		if fb, err := os.Stat(b); err == nil && os.SameFile(fa, fb) {
+			return true // symlinks, case-insensitive volumes
 		}
 	}
-	if !IsLocalPath(u) {
-		return strings.TrimRight(u, "/")
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+func fileURLToPath(u string) string {
+	rest, ok := strings.CutPrefix(u, "file://")
+	if !ok {
+		return u
 	}
+	if p, err := url.PathUnescape(rest); err == nil {
+		return p
+	}
+	return rest
+}
+
+// expandLocal makes a local path absolute (against the process cwd; callers
+// with a .cernerc directory resolve relative backends before calling).
+func expandLocal(u string) string {
 	if rest, ok := strings.CutPrefix(u, "~"); ok && (rest == "" || rest[0] == '/') {
 		if home, err := os.UserHomeDir(); err == nil {
 			u = home + rest
@@ -55,8 +80,30 @@ func canonBackend(u string) string {
 	if abs, err := filepath.Abs(u); err == nil {
 		u = abs
 	}
-	if real, err := filepath.EvalSymlinks(u); err == nil {
-		u = real
+	return u
+}
+
+// canonRemote folds the spellings of one remote: scp form and ssh://, a
+// trailing slash or ".git", the host's case (the path's case is kept) and any
+// password/token.
+func canonRemote(u string) string {
+	if !strings.Contains(u, "://") { // scp form user@host:path
+		if at := strings.Index(u, "@"); at >= 0 {
+			if host, path, ok := strings.Cut(u[at+1:], ":"); ok {
+				u = "ssh://" + u[:at+1] + host + "/" + strings.TrimLeft(path, "/")
+			}
+		} else if host, path, ok := strings.Cut(u, ":"); ok {
+			u = "ssh://" + host + "/" + strings.TrimLeft(path, "/")
+		}
 	}
-	return filepath.Clean(u)
+	pu, err := url.Parse(u)
+	if err != nil {
+		return strings.TrimRight(u, "/")
+	}
+	user := ""
+	if pu.User != nil && pu.Scheme == "ssh" {
+		user = pu.User.Username() + "@"
+	}
+	path := strings.TrimSuffix(strings.TrimRight(pu.Path, "/"), ".git")
+	return pu.Scheme + "://" + user + strings.ToLower(pu.Host) + path
 }

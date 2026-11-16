@@ -54,3 +54,58 @@ func TestCheckOrigin_RefusesOtherBackend(t *testing.T) {
 		t.Fatalf("message must name both backends: %v", err)
 	}
 }
+
+func TestSameBackend_Remotes(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		want bool
+	}{
+		{"git@github.com:o/r.git", "ssh://git@github.com/o/r", true},
+		{"git@GitHub.com:o/r", "ssh://git@github.com/o/r.git/", true},
+		{"https://Host.example/o/r.git", "https://host.example/o/r/", true},
+		{"https://user:tok@host.example/o/r", "https://host.example/o/r", true},
+		{"git@github.com:o/r", "git@github.com:o/R", false},
+		{"git@github.com:o/r", "git@github.com:o/r2", false},
+		{"git@github.com:o/r", "/srv/o/r", false},
+	} {
+		if got := sameBackend(c.a, c.b); got != c.want {
+			t.Errorf("sameBackend(%q, %q) = %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+}
+
+func TestSameBackend_LocalPaths(t *testing.T) {
+	base := t.TempDir()
+	real := filepath.Join(base, "real.git")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "link.git")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("no symlinks")
+	}
+	if !sameBackend(real, link) {
+		t.Error("a symlinked path must equal its target")
+	}
+	t.Setenv("HOME", base)
+	if !sameBackend("~/real.git", real) {
+		t.Error("~ must expand to HOME")
+	}
+	if _, err := os.Stat(filepath.Join(base, "REAL.GIT")); err == nil && !sameBackend(real, filepath.Join(base, "REAL.GIT")) {
+		t.Error("a case-differing path on a case-insensitive volume must be equal")
+	}
+	if sameBackend(real, filepath.Join(base, "other.git")) {
+		t.Error("different paths must differ")
+	}
+}
+
+func TestCheckOrigin_RedactsUserinfo(t *testing.T) {
+	a := filepath.Join(t.TempDir(), "a.git")
+	if err := InitBare(a); err != nil {
+		t.Fatal(err)
+	}
+	err := CheckOrigin(cloneOf(t, a), "https://user:s3cret@host.example/o/r")
+	if !errors.Is(err, ErrForeignClone) || strings.Contains(err.Error(), "s3cret") {
+		t.Fatalf("err = %v, want ErrForeignClone without the token", err)
+	}
+}
