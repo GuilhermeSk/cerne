@@ -27,8 +27,8 @@ func logWork(t *testing.T) (repoDir, projDir, origin string) {
 
 func TestAppendWorkLogActors(t *testing.T) {
 	repoDir, projDir, _ := logWork(t)
-	host, _ := hostname()
-	self := "tester@" + host
+	self := "human"
+	// "owner" and "henrique" differ from the recorder: the render must say who recorded.
 	for i, c := range []struct{ actor, wantActor, wantBy string }{
 		{"", self, self},
 		{"owner", "owner", self},
@@ -43,6 +43,9 @@ func TestAppendWorkLogActors(t *testing.T) {
 		}
 	}
 	got, _ := store.LoadLog(repoDir, "W-0001")
+	if out := RenderWorkLog(got); !strings.Contains(out, "owner (recorded by human)") || strings.Contains(out, "Sim, mergeia") == false {
+		t.Fatalf("render = %q, want the differing actor to show (recorded by human)", out)
+	}
 	if len(got) != 3 {
 		t.Fatalf("persisted %d entries, want 3", len(got))
 	}
@@ -202,5 +205,88 @@ func TestAppendWorkLogCorrectionChain(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("render lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestAppendWorkLogRecorder(t *testing.T) {
+	old := hostname
+	hostname = func() (string, error) { return "mac-mini.local", nil }
+	t.Cleanup(func() { hostname = old })
+	t.Setenv("USER", "tester")
+	t.Setenv("CURSOR_AGENT", "")
+	for _, c := range []struct{ name, actor, sess, want string }{
+		{"agent with session", "agent", "0123456789abcdef", "agent:session-01234567"},
+		{"agent without session", "agent", "", "agent"},
+		{"session with e-mail shape", "agent", "a@b.local", "agent"},
+		{"session too short", "agent", "short", "agent"},
+		{"session of spaces", "agent", "        ", "agent"},
+		{"multibyte session", "agent", "ééééééééé", "agent"},
+		{"uppercase hex", "agent", "ABCDEF0123", "agent"},
+		{"real uuid", "agent", "3f2a9c1e-7b4d-4e55-9a10-0c2d5e6f7a81", "agent:session-3f2a9c1e"},
+		{"human", "", "", "human"},
+		{"explicit nickname", "bot-7", "", "bot-7"},
+		{"explicit personal value", "bot@host.local", "", "human"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("CERNE_ACTOR", c.actor)
+			t.Setenv("CERNE_SESSION", c.sess)
+			if got := recorder(); got != c.want {
+				t.Fatalf("recorder() = %q, want %q", got, c.want)
+			}
+			if refusePersonal("--actor", recorder()) != nil {
+				t.Fatalf("recorder() %q would be refused", recorder())
+			}
+		})
+	}
+}
+
+func TestAppendWorkLogOmittedActorIsRecorder(t *testing.T) {
+	repoDir, projDir, _ := logWork(t)
+	old := hostname
+	hostname = func() (string, error) { return "mac-mini.local", nil }
+	t.Cleanup(func() { hostname = old })
+	t.Setenv("CERNE_ACTOR", "agent")
+	t.Setenv("CERNE_SESSION", "abcdef0123456789")
+	e, err := AppendWorkLog(repoDir, projDir, "W-0001", "", "ok", 0, logNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Actor != "agent:session-abcdef01" || e.RecordedBy != e.Actor {
+		t.Fatalf("entry = %+v", e)
+	}
+	if out := RenderWorkLog([]store.LogEntry{e}); strings.Contains(out, "recorded by") {
+		t.Fatalf("render = %q, want no recorded-by", out)
+	}
+}
+
+func TestLogTimeBrazilianZones(t *testing.T) {
+	old := logZone
+	t.Cleanup(func() { logZone = old })
+	for _, c := range []struct{ zone, want string }{
+		{"America/Sao_Paulo", "20:23 BRT (23:23Z)"},
+		{"America/Manaus", "19:23 AMT (23:23Z)"},
+		{"America/Noronha", "21:23 FNT (23:23Z)"},
+		{"America/Rio_Branco", "18:23 ACT (23:23Z)"},
+		{"Europe/Lisbon", "23:23 WET (23:23Z)"},
+		{"UTC", "23:23 UTC (23:23Z)"},
+	} {
+		loc, err := time.LoadLocation(c.zone)
+		if err != nil {
+			t.Skipf("no tzdata: %v", err)
+		}
+		logZone = loc
+		if got := LogTime("2026-11-13T23:23:00Z"); got != c.want {
+			t.Errorf("%s: LogTime = %q, want %q", c.zone, got, c.want)
+		}
+	}
+}
+
+func TestRenderWorkLogOldEntryShowsAsRecorded(t *testing.T) {
+	old := logZone
+	logZone = time.UTC
+	t.Cleanup(func() { logZone = old })
+	e := store.LogEntry{Seq: 1, UTC: "2026-11-13T23:23:00Z", Actor: "owner", RecordedBy: "agent:user@host.local", Text: "x"}
+	if out := RenderWorkLog([]store.LogEntry{e}); !strings.Contains(out, "owner (recorded by agent:user@host.local)") {
+		t.Fatalf("render = %q", out)
 	}
 }
