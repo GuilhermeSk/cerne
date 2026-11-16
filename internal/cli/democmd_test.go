@@ -359,3 +359,15 @@ func TestDemoProjectID_LeftoverDirIsTaken(t *testing.T) {
 		t.Fatalf("id = %q, %v; want taskflow-2", id, err)
 	}
 }
+
+// Only "does not exist" frees an id; any other stat error is returned.
+func TestDemoProjectID_StatErrorIsReturned(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "afile")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CERNE_CACHE_DIR", file) // the cache path runs through a file: ENOTDIR
+	if id, err := demoProjectID(filepath.Join(t.TempDir(), "b.git")); err == nil {
+		t.Fatalf("id = %q, want the stat error", id)
+	}
+}

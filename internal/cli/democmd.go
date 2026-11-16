@@ -406,8 +406,10 @@ func demoProjectID(backend string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if _, err := os.Stat(cache); err != nil {
+		if _, err := os.Stat(cache); errors.Is(err, fs.ErrNotExist) {
 			return id, nil
+		} else if err != nil {
+			return "", err
 		}
 		repo := filepath.Join(cache, "repo")
 		if _, err := os.Stat(filepath.Join(repo, ".git")); err == nil && gitback.CheckOrigin(repo, backend) == nil {
