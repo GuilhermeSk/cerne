@@ -43,7 +43,15 @@ type Ambiguity struct {
 	Agent    string   `json:"agent"`
 	Role     string   `json:"role"`
 	Entities []string `json:"entities"`
+	Reason   string   `json:"reason"`
 }
+
+// Why a subagent is ambiguous (Ambiguity.Reason).
+const (
+	reasonBinding = "binding changed while it ran"            // F-0396 crit. 10
+	reasonCites   = "prompt cites another feature"            // F-0411 crit. 1
+	reasonMixed   = "binding has prompts of several features" // F-0411 crit. 2
+)
 
 // Backfill is the report of BackfillRoles.
 type Backfill struct {
@@ -61,6 +69,7 @@ type agentKey struct{ sess, agent string }
 // agentGroup is one classified subagent's messages, as BackfillRoles reads them.
 type agentGroup struct {
 	class    string
+	cited    []string // the feature ids its first prompt cites
 	entities map[string]bool
 	c        Counters // the messages some binding governs
 	first    time.Time
@@ -72,8 +81,8 @@ type agentGroup struct {
 // BackfillRoles classifies the subagents of the ledger's Claude Code sessions
 // by their transcripts (classifyRole) and reports, per feature, the critic and
 // judge cost the feature's anchor lacks (F-0396). Each subagent counts on the
-// entity its parent session's binding gives it — the prompt is never read for
-// an id. It writes nothing. since drops the subagents whose first message is
+// entity its parent session's binding gives it. The prompt never picks the entity;
+// it only takes a subagent out, to ambiguous (F-0411). It writes nothing. since drops the subagents whose first message is
 // older.
 func BackfillRoles(in Inputs, since time.Time) (Backfill, error) {
 	var out Backfill
@@ -116,7 +125,7 @@ func BackfillRoles(in Inputs, since time.Time) (Backfill, error) {
 			seen[m.key] = m.key != ""
 			g := groups[agentKey{sess, m.agent}]
 			if g == nil {
-				g = &agentGroup{class: m.class, entities: map[string]bool{}, first: m.ts}
+				g = &agentGroup{class: m.class, cited: m.cited, entities: map[string]bool{}, first: m.ts}
 				groups[agentKey{sess, m.agent}] = g
 			}
 			if !m.ts.IsZero() && (g.first.IsZero() || m.ts.Before(g.first)) {
@@ -150,6 +159,21 @@ func BackfillRoles(in Inputs, since time.Time) (Backfill, error) {
 	sort.Slice(keys, func(i, j int) bool {
 		return keys[i].sess < keys[j].sess || keys[i].sess == keys[j].sess && keys[i].agent < keys[j].agent
 	})
+	// The prompt only ever takes a subagent out of a feature (F-0411): the
+	// ids the unbound subagents of one session under one binding cite, summed.
+	type bindKey struct{ sess, entity string }
+	cites := map[bindKey]map[string]bool{}
+	for _, k := range keys {
+		if g := groups[k]; !g.skip && !g.bound && len(g.entities) == 1 {
+			bk := bindKey{k.sess, slices.Sorted(maps.Keys(g.entities))[0]}
+			if cites[bk] == nil {
+				cites[bk] = map[string]bool{}
+			}
+			for _, id := range g.cited {
+				cites[bk][id] = true
+			}
+		}
+	}
 	byFeature := map[string]*FeatureRoles{}
 	for _, k := range keys {
 		g := groups[k]
@@ -158,9 +182,23 @@ func BackfillRoles(in Inputs, since time.Time) (Backfill, error) {
 		}
 		ents := slices.Sorted(maps.Keys(g.entities))
 		ar := AgentRole{Session: k.sess, Agent: k.agent, Role: g.class, Bound: g.bound}
+		reason, listed := reasonBinding, ents
+		if len(ents) == 1 && !g.bound && domain.IsFeatureID(ents[0]) {
+			all := cites[bindKey{k.sess, ents[0]}]
+			switch {
+			case len(g.cited) > 0 && !slices.Contains(g.cited, ents[0]):
+				reason = reasonCites
+			case len(all) > 1 && !slices.Equal(g.cited, ents):
+				reason = reasonMixed
+				g.cited = slices.Sorted(maps.Keys(all)) // the blind judge lists what its siblings cite
+			}
+			if reason != reasonBinding {
+				listed = slices.Compact(slices.Sorted(slices.Values(append(slices.Clone(ents), g.cited...))))
+			}
+		}
 		switch {
-		case len(ents) > 1:
-			out.Ambiguous = append(out.Ambiguous, Ambiguity{Session: k.sess, Agent: k.agent, Role: g.class, Entities: ents})
+		case len(listed) > 1:
+			out.Ambiguous = append(out.Ambiguous, Ambiguity{Session: k.sess, Agent: k.agent, Role: g.class, Entities: listed, Reason: reason})
 		case len(ents) == 0 || !domain.IsFeatureID(ents[0]):
 			out.Unattributed++
 		default:
