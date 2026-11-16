@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -80,18 +81,28 @@ func AppendWorkLog(repoDir, projDir, work, actor, text string, corrects int, now
 // shape of the e-mail the command itself refuses. Another explicit
 // CERNE_ACTOR is kept only when refusePersonal lets it through.
 func recorder() string {
+	r := rawRecorder()
+	if refusePersonal("--actor", r) != nil {
+		if isAgentActor(r) {
+			return legacyAgentActor
+		}
+		return "human"
+	}
+	return r
+}
+
+var sessionHexRe = regexp.MustCompile(`^[0-9a-f]{8}`)
+
+func rawRecorder() string {
 	switch a := actorEnv(); a {
 	case "":
 		return "human"
 	case legacyAgentActor:
-		if s := os.Getenv("CERNE_SESSION"); s != "" {
-			return agentActorPrefix + "session-" + s[:min(len(s), 8)]
+		if s := sessionHexRe.FindString(os.Getenv("CERNE_SESSION")); s != "" {
+			return agentActorPrefix + "session-" + s
 		}
 		return a
 	default:
-		if refusePersonal("", a) != nil {
-			return "human"
-		}
 		return a
 	}
 }

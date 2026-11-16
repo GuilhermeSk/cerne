@@ -28,6 +28,7 @@ func logWork(t *testing.T) (repoDir, projDir, origin string) {
 func TestAppendWorkLogActors(t *testing.T) {
 	repoDir, projDir, _ := logWork(t)
 	self := "human"
+	// "owner" and "henrique" differ from the recorder: the render must say who recorded.
 	for i, c := range []struct{ actor, wantActor, wantBy string }{
 		{"", self, self},
 		{"owner", "owner", self},
@@ -42,6 +43,9 @@ func TestAppendWorkLogActors(t *testing.T) {
 		}
 	}
 	got, _ := store.LoadLog(repoDir, "W-0001")
+	if out := RenderWorkLog(got); !strings.Contains(out, "owner (recorded by human)") || strings.Contains(out, "Sim, mergeia") == false {
+		t.Fatalf("render = %q, want the differing actor to show (recorded by human)", out)
+	}
 	if len(got) != 3 {
 		t.Fatalf("persisted %d entries, want 3", len(got))
 	}
@@ -213,6 +217,12 @@ func TestAppendWorkLogRecorder(t *testing.T) {
 	for _, c := range []struct{ name, actor, sess, want string }{
 		{"agent with session", "agent", "0123456789abcdef", "agent:session-01234567"},
 		{"agent without session", "agent", "", "agent"},
+		{"session with e-mail shape", "agent", "a@b.local", "agent"},
+		{"session too short", "agent", "short", "agent"},
+		{"session of spaces", "agent", "        ", "agent"},
+		{"multibyte session", "agent", "ééééééééé", "agent"},
+		{"uppercase hex", "agent", "ABCDEF0123", "agent"},
+		{"real uuid", "agent", "3f2a9c1e-7b4d-4e55-9a10-0c2d5e6f7a81", "agent:session-3f2a9c1e"},
 		{"human", "", "", "human"},
 		{"explicit nickname", "bot-7", "", "bot-7"},
 		{"explicit personal value", "bot@host.local", "", "human"},
@@ -223,7 +233,7 @@ func TestAppendWorkLogRecorder(t *testing.T) {
 			if got := recorder(); got != c.want {
 				t.Fatalf("recorder() = %q, want %q", got, c.want)
 			}
-			if refusePersonal("x", recorder()) != nil {
+			if refusePersonal("--actor", recorder()) != nil {
 				t.Fatalf("recorder() %q would be refused", recorder())
 			}
 		})
