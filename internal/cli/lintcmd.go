@@ -55,6 +55,27 @@ func newLintCmd() *cobra.Command {
 // projectLint is a variable so a test can prove the no-edits path never lints (F-0393).
 var projectLint = app.ProjectLint
 
+type basePass struct {
+	findings []lint.Finding
+	err      error
+}
+
+// lintBase lints the snapshot clone: the "before" side of the staged diff.
+func lintBase(baseDir, dir string, cfg project.Config) basePass {
+	base, err := projectLint(baseDir, dir, cfg)
+	if err != nil {
+		return basePass{err: err}
+	}
+	if project.CLIOutputLanguage(dir) == "en" {
+		lits, err := lint.SpecCLILiteralFindings(baseDir)
+		if err != nil {
+			return basePass{err: err}
+		}
+		base = append(base, lits...)
+	}
+	return basePass{findings: base}
+}
+
 func runLint(cmd *cobra.Command, dir string, fixTasks, staged, all, scoped bool, feature, parent string) error {
 	repoDir, cfg, cleanup, driftCtx, edits, err := lintRoot(dir, staged, staged && !all && !scoped)
 	if err != nil {
@@ -71,6 +92,15 @@ func runLint(cmd *cobra.Command, dir string, fixTasks, staged, all, scoped bool,
 			fmt.Fprintln(cmd.OutOrStdout(), "cerne: no local edits to lint")
 		}
 		return nil
+	}
+	// Default staged mode: the base pass over the clone is independent of the
+	// tree pass, so it runs alongside it (F-0404). It is waited for below, where
+	// the sequential code used to run it, so errors keep their order. A cache of
+	// the base by HEAD is out: time-based rules would age inside it.
+	var baseCh chan basePass
+	if editOnly {
+		baseCh = make(chan basePass, 1)
+		go func() { baseCh <- lintBase(edits.base, dir, cfg) }()
 	}
 	findings, err := projectLint(repoDir, dir, cfg)
 	if err != nil {
@@ -126,17 +156,11 @@ func runLint(cmd *cobra.Command, dir string, fixTasks, staged, all, scoped bool,
 	// (F-0382, the before x after of golangci-lint's new-from-rev).
 	var otherCount, fixedCount int
 	if editOnly {
-		base, err := projectLint(edits.base, dir, cfg)
-		if err != nil {
-			return err
+		bp := <-baseCh
+		if bp.err != nil {
+			return bp.err
 		}
-		if project.CLIOutputLanguage(dir) == "en" {
-			lits, err := lint.SpecCLILiteralFindings(edits.base)
-			if err != nil {
-				return err
-			}
-			base = append(base, lits...)
-		}
+		base := bp.findings
 		lint.DowngradeWikiDebt(base, wiki)
 		var kept []lint.Finding
 		findings, kept, fixedCount = diffFindings(findings, base)

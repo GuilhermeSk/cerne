@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -499,5 +500,39 @@ func TestLintStagedTreeGauntletGate(t *testing.T) {
 	edited := treeFindings(t, projDir, repoDir, map[string]string{"content/features/F-0003/result.md": resultNoGauntlet})
 	if !hasRule(edited, lint.RuleResultMissingGauntlet, "F-0003") {
 		t.Fatalf("overlay without Gauntlet must trip result-missing-gauntlet: %v", lintKeys(edited))
+	}
+}
+
+// F-0404 crit. 2: the tree pass and the base pass overlap; each waits for the
+// other, so a sequential run times out instead of passing.
+func TestLintStagedPassesRunConcurrently(t *testing.T) {
+	projDir, _ := stagedDebtProject(t)
+	p := debtSpecPath(projDir)
+	b, _ := os.ReadFile(p)
+	mustWrite(t, p, strings.Replace(string(b), "Veja [x](./inexistente.md).", "Sem link.", 1))
+
+	var mu sync.Mutex
+	started := 0
+	both := make(chan struct{})
+	old := projectLint
+	projectLint = func(repo, proj string, cfg project.Config) ([]lint.Finding, error) {
+		mu.Lock()
+		started++
+		if started == 2 {
+			close(both)
+		}
+		mu.Unlock()
+		select {
+		case <-both:
+		case <-time.After(10 * time.Second):
+			t.Errorf("the other pass never started: passes are sequential")
+		}
+		return old(repo, proj, cfg)
+	}
+	t.Cleanup(func() { projectLint = old })
+
+	out, err := execCerne(t, "lint", "--staged", "--dir", projDir)
+	if err != nil || !strings.Contains(out, "cerne: 1 findings fixed by your edits") {
+		t.Fatalf("output must match the sequential run, err=%v:\n%s", err, out)
 	}
 }
