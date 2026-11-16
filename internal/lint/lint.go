@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/henriquesakata/cerne/internal/doccheck"
@@ -238,7 +239,7 @@ var liveFeatureStates = map[domain.FeatureState]bool{
 // first matching original identifier.
 type needle struct {
 	id, title, state, use string
-	rxID, rxTitle         *regexp.Regexp
+	rxID, rxTitle         word
 	imported              []importedNeedle
 }
 
@@ -246,7 +247,7 @@ type needle struct {
 // entity, e.g. "case 0090" or "adr-045".
 type importedNeedle struct {
 	text string
-	rx   *regexp.Regexp
+	rx   word
 }
 
 // scannedDoc is one authored content document subject to the text rules: entity
@@ -757,9 +758,9 @@ func buildNeedles(repoDir string, features []store.Feature, decisions []store.De
 		if f.State != domain.StateSuperseded && f.State != domain.StateRejected {
 			continue
 		}
-		n := needle{id: f.ID, title: f.Title, state: string(f.State), use: f.SupersededBy, rxID: wordRx(f.ID)}
+		n := needle{id: f.ID, title: f.Title, state: string(f.State), use: f.SupersededBy, rxID: newWord(f.ID)}
 		if utf8.RuneCountInString(f.Title) >= minTitleNeedleLen {
-			n.rxTitle = wordRx(f.Title)
+			n.rxTitle = newWord(f.Title)
 		}
 		var err error
 		if n.imported, err = importedNeedles(repoDir, "content/features/"+f.ID+"/spec.md"); err != nil {
@@ -771,7 +772,7 @@ func buildNeedles(repoDir string, features []store.Feature, decisions []store.De
 		if d.State != domain.DecisionSuperseded && d.State != domain.DecisionRetired {
 			continue
 		}
-		n := needle{id: d.ID, title: d.Title, state: string(d.State), use: d.SupersededBy, rxID: wordRx(d.ID)}
+		n := needle{id: d.ID, title: d.Title, state: string(d.State), use: d.SupersededBy, rxID: newWord(d.ID)}
 		var err error
 		if n.imported, err = importedNeedles(repoDir, "content/decisions/"+d.ID+".md"); err != nil {
 			return nil, err
@@ -782,7 +783,7 @@ func buildNeedles(repoDir string, features []store.Feature, decisions []store.De
 		if r.State != domain.ReferenceObsolete {
 			continue
 		}
-		n := needle{id: r.ID, title: r.Title, state: string(r.State), rxID: wordRx(r.ID)}
+		n := needle{id: r.ID, title: r.Title, state: string(r.State), rxID: newWord(r.ID)}
 		var err error
 		if n.imported, err = importedNeedles(repoDir, "content/references/"+r.ID+".md"); err != nil {
 			return nil, err
@@ -793,7 +794,7 @@ func buildNeedles(repoDir string, features []store.Feature, decisions []store.De
 		if rb.State != domain.RunbookSuperseded {
 			continue
 		}
-		n := needle{id: rb.ID, title: rb.Title, state: string(rb.State), use: rb.SupersededBy, rxID: wordRx(rb.ID)}
+		n := needle{id: rb.ID, title: rb.Title, state: string(rb.State), use: rb.SupersededBy, rxID: newWord(rb.ID)}
 		var err error
 		if n.imported, err = importedNeedles(repoDir, "content/runbooks/"+rb.ID+".md"); err != nil {
 			return nil, err
@@ -804,9 +805,9 @@ func buildNeedles(repoDir string, features []store.Feature, decisions []store.De
 		if nt.State != domain.NoteSuperseded {
 			continue
 		}
-		n := needle{id: nt.ID, title: nt.Title, state: string(nt.State), use: nt.SupersededBy, rxID: wordRx(nt.ID)}
+		n := needle{id: nt.ID, title: nt.Title, state: string(nt.State), use: nt.SupersededBy, rxID: newWord(nt.ID)}
 		if utf8.RuneCountInString(nt.Title) >= minTitleNeedleLen {
-			n.rxTitle = wordRx(nt.Title)
+			n.rxTitle = newWord(nt.Title)
 		}
 		var err error
 		if n.imported, err = importedNeedles(repoDir, "content/notes/"+nt.ID+".md"); err != nil {
@@ -820,12 +821,12 @@ func buildNeedles(repoDir string, features []store.Feature, decisions []store.De
 		// identifiers live docs must not mention. The Name is a generic domain
 		// word (e.g. "Bills"/"Investments") — kept only as the finding label,
 		// never a needle, or every prose use of the word false-flags (F-0092).
-		n := needle{id: h.ID, title: h.Name, state: string(h.State), use: h.SupersededBy, rxID: wordRx(h.ID)}
+		n := needle{id: h.ID, title: h.Name, state: string(h.State), use: h.SupersededBy, rxID: newWord(h.ID)}
 		for _, alias := range h.Aliases {
 			if utf8.RuneCountInString(alias) < minTitleNeedleLen {
 				continue
 			}
-			n.imported = append(n.imported, importedNeedle{text: alias, rx: wordRx(alias)})
+			n.imported = append(n.imported, importedNeedle{text: alias, rx: newWord(alias)})
 		}
 		needles = append(needles, n)
 	}
@@ -852,7 +853,7 @@ func importedNeedles(repoDir, rel string) ([]importedNeedle, error) {
 		if utf8.RuneCountInString(text) < minTitleNeedleLen {
 			continue
 		}
-		ins = append(ins, importedNeedle{text: text, rx: wordRx(text)})
+		ins = append(ins, importedNeedle{text: text, rx: newWord(text)})
 	}
 	return ins, nil
 }
@@ -886,6 +887,37 @@ func deriveImportedNeedles(source string) []string {
 		return []string{name, m[1]}
 	}
 	return []string{name}
+}
+
+// word is a word-boundary matcher plus the case-folded literal it needs: the
+// literal being absent from the folded text rules the regex out (F-0404).
+type word struct {
+	rx  *regexp.Regexp
+	lit string
+}
+
+func newWord(s string) word { return word{rx: wordRx(s), lit: foldKey(s)} }
+
+// match runs the regex only when the folded literal can be in the text. The
+// folded-contains test is a necessary condition (foldKey is the (?i)
+// equivalence), so it never hides a match.
+func (w word) match(text, folded string) bool {
+	return w.rx != nil && strings.Contains(folded, w.lit) && w.rx.MatchString(text)
+}
+
+// foldKey maps every rune to the smallest rune of its unicode.SimpleFold
+// orbit, the same equivalence the (?i) flag of Go's regexp uses. (ToLower is
+// not enough: U+017F long s matches "s" under (?i) but lowers to itself.)
+func foldKey(s string) string {
+	return strings.Map(func(r rune) rune {
+		m := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			if f < m {
+				m = f
+			}
+		}
+		return m
+	}, s)
 }
 
 // wordRx compiles a case-insensitive word-boundary matcher for the literal s.
@@ -1066,8 +1098,9 @@ func stateLabel(state string) string {
 func refFindings(d scannedDoc, text string, needles []needle) []Finding {
 	var findings []Finding
 	isErrata := strings.HasPrefix(d.rel, "content/errata/")
+	folded := foldKey(text)
 	for _, n := range needles {
-		detail := matchNeedle(n, text)
+		detail := matchNeedle(n, text, folded)
 		if detail == "" {
 			continue
 		}
@@ -1117,15 +1150,15 @@ func refFindings(d scannedDoc, text string, needles []needle) []Finding {
 
 // matchNeedle returns the ref-to-superseded detail for the first matching
 // mention (by id, title or imported identifier), or "" when n is absent.
-func matchNeedle(n needle, text string) string {
-	if n.rxID.MatchString(text) {
+func matchNeedle(n needle, text, folded string) string {
+	if n.rxID.match(text, folded) {
 		return fmt.Sprintf("mentions %s (\"%s\"), which is %s", n.id, n.title, stateLabel(n.state))
 	}
-	if n.rxTitle != nil && n.rxTitle.MatchString(text) {
+	if n.rxTitle.match(text, folded) {
 		return fmt.Sprintf("mentions %s (\"%s\"), which is %s", n.id, n.title, stateLabel(n.state))
 	}
 	for _, in := range n.imported {
-		if in.rx.MatchString(text) {
+		if in.rx.match(text, folded) {
 			return fmt.Sprintf("mentions %s (%s \"%s\"), which is %s", in.text, n.id, n.title, stateLabel(n.state))
 		}
 	}
@@ -1194,14 +1227,14 @@ func allMentionsAcknowledged(text string, n needle) bool {
 		}
 		return true
 	}
-	if !allMarked(n.rxID) {
+	if !allMarked(n.rxID.rx) {
 		return false
 	}
-	if n.rxTitle != nil && !allMarked(n.rxTitle) {
+	if n.rxTitle.rx != nil && !allMarked(n.rxTitle.rx) {
 		return false
 	}
 	for _, in := range n.imported {
-		if !allMarked(in.rx) {
+		if !allMarked(in.rx.rx) {
 			return false
 		}
 	}
