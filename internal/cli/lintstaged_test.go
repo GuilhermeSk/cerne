@@ -1,13 +1,17 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -500,4 +504,212 @@ func TestLintStagedTreeGauntletGate(t *testing.T) {
 	if !hasRule(edited, lint.RuleResultMissingGauntlet, "F-0003") {
 		t.Fatalf("overlay without Gauntlet must trip result-missing-gauntlet: %v", lintKeys(edited))
 	}
+}
+
+// F-0404 crit. 2: the tree pass and the base pass overlap; each waits for the
+// other, so a sequential run times out instead of passing.
+func TestLintStagedPassesRunConcurrently(t *testing.T) {
+	projDir, _ := stagedDebtProject(t)
+	p := debtSpecPath(projDir)
+	b, _ := os.ReadFile(p)
+	mustWrite(t, p, strings.Replace(string(b), "Veja [x](./inexistente.md).", "Sem link.", 1))
+
+	var mu sync.Mutex
+	started := 0
+	both := make(chan struct{})
+	old := projectLint
+	projectLint = func(repo, proj string, cfg project.Config) ([]lint.Finding, error) {
+		mu.Lock()
+		started++
+		if started == 2 {
+			close(both)
+		}
+		mu.Unlock()
+		select {
+		case <-both:
+		case <-time.After(10 * time.Second):
+			t.Errorf("the other pass never started: passes are sequential")
+		}
+		return old(repo, proj, cfg)
+	}
+	t.Cleanup(func() { projectLint = old })
+
+	out, err := execCerne(t, "lint", "--staged", "--dir", projDir)
+	if err != nil || !strings.Contains(out, "cerne: 1 findings fixed by your edits") {
+		t.Fatalf("output must match the sequential run, err=%v:\n%s", err, out)
+	}
+}
+
+// hashTree maps every file under dir (rel path) to its sha256.
+func hashTree(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || strings.Contains(p, string(filepath.Separator)+".git"+string(filepath.Separator)) {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		sum := sha256.Sum256(b)
+		out[rel] = hex.EncodeToString(sum[:])
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// F-0404 crit. 3: the staged tree hard-links the files the edit did not touch,
+// inside the project cache dir, and the edited file is a new file, not the link.
+func TestLintStagedTreeLinksUneditedFiles(t *testing.T) {
+	projDir, specPath := stagedDebtProject(t)
+	b, _ := os.ReadFile(specPath)
+	mustWrite(t, specPath, string(b)+"\nmais uma linha\n")
+	repoDir := mustCtxRepoDir(t, projDir)
+
+	root, edits, cleanup, err := stagedLintRoot(repoDir, projDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if edits.count != 1 {
+		t.Fatalf("want 1 edit, got %d", edits.count)
+	}
+	if filepath.Dir(root) != filepath.Dir(repoDir) || !strings.HasPrefix(filepath.Base(root), "stagedlint-") {
+		t.Fatalf("tree %s must live beside the clone %s as stagedlint-*", root, repoDir)
+	}
+	linked, copied := 0, 0
+	for _, sub := range []string{"entities", "content", "events"} {
+		_ = filepath.WalkDir(filepath.Join(repoDir, sub), func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			rel, _ := filepath.Rel(repoDir, p)
+			a, _ := os.Stat(p)
+			c, err := os.Stat(filepath.Join(root, rel))
+			if err != nil {
+				t.Errorf("%s missing from the tree", rel)
+				return nil
+			}
+			if os.SameFile(a, c) {
+				linked++
+			} else {
+				copied++
+				if rel != "content/features/F-0001/spec.md" {
+					t.Errorf("%s was copied, want a hard link", rel)
+				}
+			}
+			return nil
+		})
+	}
+	if linked == 0 || copied != 1 {
+		t.Fatalf("want every file linked but the edited one, linked=%d copied=%d", linked, copied)
+	}
+}
+
+// F-0404 crit. 4: lint --staged with an edit leaves every clone file byte
+// identical, including the one the edit overlays.
+func TestLintStagedNeverWritesTheClone(t *testing.T) {
+	projDir, specPath := stagedDebtProject(t)
+	repoDir := mustCtxRepoDir(t, projDir)
+	before := hashTree(t, repoDir)
+	b, _ := os.ReadFile(specPath)
+	mustWrite(t, specPath, string(b)+"\nmais uma linha\n")
+	if _, err := execCerne(t, "lint", "--staged", "--dir", projDir); err != nil {
+		t.Fatal(err)
+	}
+	if after := hashTree(t, repoDir); !reflect.DeepEqual(before, after) {
+		t.Fatalf("lint --staged changed the clone")
+	}
+}
+
+func mustCtxRepoDir(t *testing.T, projDir string) string {
+	t.Helper()
+	ctx, err := resolvePaths(projDir)
+	if err != nil {
+		t.Fatalf("resolvePaths: %v", err)
+	}
+	return ctx.repoDir
+}
+
+// F-0404 crit. 2: the REAL two passes, concurrent, give the same stdout and
+// exit as the sequential run (run under -race).
+func TestLintStagedConcurrentMatchesSequential(t *testing.T) {
+	projDir, specPath := stagedDebtProject(t)
+	b, _ := os.ReadFile(specPath)
+	mustWrite(t, specPath, strings.Replace(string(b), "\n", "\n\nver [x](./nada.md)\n", 1))
+	d := debtSpecPath(projDir)
+	db, _ := os.ReadFile(d)
+	mustWrite(t, d, strings.Replace(string(db), "Veja [x](./inexistente.md).", "Sem link.", 1))
+
+	run := func(concurrent bool, args ...string) (string, bool) {
+		concurrentPasses = concurrent
+		defer func() { concurrentPasses = true }()
+		out, err := execCerne(t, append([]string{"lint", "--staged", "--dir", projDir}, args...)...)
+		return out, err != nil
+	}
+	for _, args := range [][]string{nil, {"--json"}} {
+		seqOut, seqFail := run(false, args...)
+		conOut, conFail := run(true, args...)
+		if seqOut != conOut || seqFail != conFail {
+			t.Fatalf("args %v: sequential (fail=%v):\n%s\nconcurrent (fail=%v):\n%s", args, seqFail, seqOut, conFail, conOut)
+		}
+		if !seqFail || !strings.Contains(seqOut, "nada.md") {
+			t.Fatalf("fixture must produce a new finding, fail=%v:\n%s", seqFail, seqOut)
+		}
+	}
+}
+
+// F-0404 crit. 3: when the link step fails, the tree is copied, not broken.
+func TestLinkTreeFilesFallsBackToCopy(t *testing.T) {
+	src, dst := t.TempDir(), filepath.Join(t.TempDir(), "out")
+	writeFileAll(t, filepath.Join(src, "a", "b.md"), "body")
+	old := linkFile
+	linkFile = func(string, string) error { return errors.New("no links here") }
+	t.Cleanup(func() { linkFile = old })
+	if err := linkTreeFiles(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dst, "a", "b.md"))
+	if err != nil || string(got) != "body" {
+		t.Fatalf("want a copy, got %q err=%v", got, err)
+	}
+	a, _ := os.Stat(filepath.Join(src, "a", "b.md"))
+	c, _ := os.Stat(filepath.Join(dst, "a", "b.md"))
+	if os.SameFile(a, c) {
+		t.Fatal("fallback must copy, not link")
+	}
+}
+
+// F-0404: a stagedlint-* tree a crashed run left behind is swept when it is
+// over a day old; a fresh one (maybe another run's) and other dirs stay.
+func TestSweepStaleTrees(t *testing.T) {
+	cache := t.TempDir()
+	for _, n := range []string{"stagedlint-old", "stagedlint-new", "repo"} {
+		writeFileAll(t, filepath.Join(cache, n, "f"), "x")
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	for _, n := range []string{"stagedlint-old", "repo"} {
+		if err := os.Chtimes(filepath.Join(cache, n), old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sweepStaleTrees(cache)
+	for n, want := range map[string]bool{"stagedlint-old": false, "stagedlint-new": true, "repo": true} {
+		if _, err := os.Stat(filepath.Join(cache, n)); (err == nil) != want {
+			t.Errorf("%s exists=%v, want %v", n, err == nil, want)
+		}
+	}
+}
+
+func writeFileAll(t *testing.T, p, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, p, body)
 }

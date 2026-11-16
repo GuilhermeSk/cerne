@@ -1,0 +1,65 @@
+[
+  {
+    "Rule": "ref-to-superseded",
+    "Entity": "F-0006",
+    "File": "content/features/F-0006/spec.md",
+    "Detail": "mentions BOLETOS (H-0001 \"Bills\"), which is superseded — use Finance",
+    "Line": 0,
+    "Fix": "",
+    "Downgraded": false
+  },
+  {
+    "Rule": "ref-to-superseded",
+    "Entity": "F-0006",
+    "File": "content/features/F-0006/spec.md",
+    "Detail": "mentions F-0001 (\"Ledger settlement flow\"), which is superseded — use F-0002",
+    "Line": 0,
+    "Fix": "",
+    "Downgraded": false
+  },
+  {
+    "Rule": "ref-to-superseded",
+    "Entity": "F-0006",
+    "File": "content/features/F-0006/spec.md",
+    "Detail": "mentions F-0003 (\"Orchard Kelvin sensor\"), which is rejected",
+    "Line": 0,
+    "Fix": "",
+    "Downgraded": false
+  },
+  {
+    "Rule": "ref-to-superseded",
+    "Entity": "F-0006",
+    "File": "content/features/F-0006/spec.md",
+    "Detail": "mentions F-0004 (\"Acme ſtore ingest\"), which is superseded — use F-0002",
+    "Line": 0,
+    "Fix": "",
+    "Downgraded": false
+  },
+  {
+    "Rule": "ref-to-superseded",
+    "Entity": "F-0006",
+    "File": "content/features/F-0006/spec.md",
+    "Detail": "mentions F-0005 (\"Café Münster export\"), which is rejected",
+    "Line": 0,
+    "Fix": "",
+    "Downgraded": false
+  },
+  {
+    "Rule": "ref-to-superseded",
+    "Entity": "F-0006",
+    "File": "content/features/F-0006/spec.md",
+    "Detail": "mentions F-0008 (\"Orchard Kelvin gauge\"), which is rejected",
+    "Line": 0,
+    "Fix": "",
+    "Downgraded": false
+  },
+  {
+    "Rule": "ref-to-superseded",
+    "Entity": "F-0006",
+    "File": "content/features/F-0006/spec.md",
+    "Detail": "mentions case 0090 (F-0007 \"Imported thing\"), which is superseded — use F-0002",
+    "Line": 0,
+    "Fix": "",
+    "Downgraded": false
+  }
+]
