@@ -40,6 +40,27 @@ export default function ConversationList({ conversations, activeId, onSelect, on
   // ele, não contra c.title, que o resumo pode trocar com o editor aberto.
   const openedWith = useRef('')
 
+  // Foco após excluir (F-0431): a linha seguinte (ou a anterior); sem nenhuma,
+  // "Nova conversa". Só age se a lista de fato encolheu (o hook pode ter
+  // cancelado a confirmação).
+  const root = useRef<HTMLDivElement | null>(null)
+  const afterDelete = useRef<{ next: string | null; size: number } | null>(null)
+  useEffect(() => {
+    const pending = afterDelete.current
+    if (!pending) return
+    afterDelete.current = null
+    if (conversations.length >= pending.size) return
+    const sel = pending.next
+      ? root.current?.querySelector<HTMLElement>(`[data-conversation-id="${pending.next}"] .conversation-item-select`)
+      : document.querySelector<HTMLElement>('.backlog-chat-new')
+    sel?.focus()
+  }, [conversations])
+  const remove = (id: string) => {
+    const i = sorted.findIndex((c) => c.id === id)
+    afterDelete.current = { next: (sorted[i + 1] ?? sorted[i - 1])?.id ?? null, size: conversations.length }
+    onDelete(id)
+  }
+
   const startRename = (c: Conversation, btn: HTMLButtonElement) => {
     settled.current = false
     renameBtn.current = btn
@@ -59,11 +80,12 @@ export default function ConversationList({ conversations, activeId, onSelect, on
   }
 
   return (
-    <div className="conversation-list">
+    <div className="conversation-list" ref={root}>
       <ul>
         {sorted.map((c) => (
           <li
             key={c.id}
+            data-conversation-id={c.id}
             className={c.id === activeId ? 'conversation-item active' : 'conversation-item'}
           >
             {editingId === c.id ? (
@@ -91,6 +113,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
                 // C9: a coluna corta o título (reticência de CSS); o tooltip mostra
                 // o nome inteiro, que o nome acessível (o conteúdo) já carrega.
                 title={c.title || t.backlogChat.untitledConversation}
+                aria-current={c.id === activeId ? 'true' : undefined}
                 onClick={() => onSelect(c.id)}
               >
                 <span className="conversation-item-title">{c.title || t.backlogChat.untitledConversation}</span>
@@ -118,7 +141,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
               type="button"
               className="conversation-item-delete"
               aria-label={t.backlogChat.deleteConversation}
-              onClick={() => onDelete(c.id)}
+              onClick={() => remove(c.id)}
             >
               ×
             </button>

@@ -322,8 +322,8 @@ h2 {
      de rolar por dentro — o `align-items: stretch` fazia o painel acompanhar a
      linha, mas nada limitava a linha. minmax(0, 1fr) prende ao grid, e o
      mínimo 0 é o que autoriza encolher abaixo do conteúdo (F-0241). */
-  grid-template-rows: minmax(0, 1fr);
-  gap: 1.5rem;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0 1.5rem;
   align-items: stretch;
   flex: 1;
   min-height: 0;
@@ -344,7 +344,33 @@ h2 {
    rolar. `min-height: 0` é o que autoriza encolher abaixo do conteúdo — a mesma
    peça que o F-0241 precisou. `auto` (não `scroll`) mantém a regra inerte
    enquanto o conteúdo couber, que é o caso comum do Backlog. */
+.backlog-head { grid-column: 1; grid-row: 1; }
+
+/* F-0431: o chat vem antes da lista no DOM (Tab/leitura); o grid o põe à direita. */
+.backlog-chat-shell {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  display: flex;
+  gap: 0.75rem;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 1rem;
+  background: var(--surface-2);
+}
+
+.backlog-chat-shell > .backlog-chat {
+  flex: 1;
+  border: 0;
+  padding: 0;
+  background: none;
+}
+
 .backlog-list-col {
+  grid-column: 1;
+  grid-row: 2;
   min-width: 0;
   align-self: stretch;
   min-height: 0;
@@ -508,10 +534,14 @@ h2 {
   cursor: pointer;
 }
 
+.conversation-item-select:hover { background: var(--surface-3); }
+
 .conversation-item.active .conversation-item-select {
-  background: var(--surface);
-  border-color: var(--border-card);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
+
+.conversation-item.active .conversation-item-title { font-weight: 600; }
 
 .conversation-item-title {
   overflow: hidden;
@@ -523,7 +553,7 @@ h2 {
 .conversation-item-age {
   flex-shrink: 0;
   font-size: 0.72rem;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .conversation-item-delete,
@@ -531,7 +561,9 @@ h2 {
   flex-shrink: 0;
   font: inherit;
   line-height: 1;
-  padding: 0.2rem 0.5rem;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  padding: 0;
   border: none;
   background: none;
   color: var(--faint);
@@ -596,7 +628,7 @@ h2 {
 .backlog-chat-new,
 .backlog-chat-history-trigger {
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   padding: 0.3rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -605,6 +637,15 @@ h2 {
   cursor: pointer;
 }
 
+.backlog-chat-new:hover,
+.backlog-chat-history-trigger:hover { color: var(--fg); border-color: var(--border-strong); }
+
+.backlog-chat-new:focus-visible,
+.backlog-chat-history-trigger:focus-visible,
+.conversation-item button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+.conversation-item button:focus-visible { outline-offset: -2px; }
+
 .backlog-chat-history-trigger[aria-expanded='true'] { color: inherit; background: var(--surface-3); }
 
 .backlog-chat-history-popover {
@@ -612,13 +653,31 @@ h2 {
   top: calc(100% + 0.35rem);
   right: 0;
   z-index: 20;
-  width: min(22rem, calc(100vw - 2rem));
+  width: min(24rem, calc(100vw - 5rem));
   padding: 0.5rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: var(--surface);
-  box-shadow: 0 6px 20px rgba(31, 36, 33, 0.16);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
+
+[data-theme='dark'] .backlog-chat-history-popover { background: var(--surface-3); }
+
+/* F-0431: coluna de histórico fixa, fora do key do chat; rola por dentro. */
+.backlog-chat-rail {
+  flex: none;
+  width: 14rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+  padding-right: 0.75rem;
+  border-right: 1px solid var(--border-soft);
+}
+
+.backlog-chat-rail .backlog-chat-new { align-self: flex-start; }
+.backlog-chat-rail .conversation-list { flex: 1; min-height: 0; overflow-y: auto; }
+.backlog-chat-rail .conversation-list ul { max-height: none; overflow: visible; }
 
 /* 1rem = degrau `title`; era 1.05rem, um dos 9 tamanhos em débito no
    ui/DESIGN.md — colapsado ao tocar esta superfície (F-0239). */
@@ -715,23 +774,6 @@ h2 {
 /* Chat + rascunho lado a lado (F-0255): a conversa conduz, o painel é o
    artefato. min-width: 0 nos dois para o markdown longo do rascunho não
    estourar a coluna do chat. */
-.backlog-chat-rail {
-  flex: none;
-  width: 14rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  min-height: 0;
-  padding-right: 0.75rem;
-  border-right: 1px solid var(--border-soft);
-}
-
-.backlog-chat-rail .backlog-chat-new { align-self: flex-start; }
-
-.backlog-chat-rail .conversation-list { flex: 1; min-height: 0; overflow-y: auto; }
-
-.backlog-chat-rail .conversation-list ul { max-height: none; overflow: visible; }
-
 .backlog-chat-body {
   display: flex;
   gap: 0.75rem;
@@ -1111,11 +1153,20 @@ h2 {
      e o painel ganha altura própria (F-0241). */
   .backlog-layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
     align-items: start;
     flex: none;
   }
 
-  .backlog-chat { height: 70dvh; order: -1; }
+  .backlog-head,
+  .backlog-chat-shell,
+  .backlog-list-col { grid-column: auto; grid-row: auto; }
+
+  .backlog-layout { row-gap: 1rem; }
+  .backlog-head { margin-bottom: 0; }
+
+  /* Um chat vazio não empurra o backlog para fora da tela (F-0431). */
+  .backlog-chat-shell { height: auto; min-height: 14rem; max-height: 70dvh; }
 }
 
 /* ---- war room (T-0003) ---- */

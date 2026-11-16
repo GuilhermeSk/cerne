@@ -215,6 +215,8 @@ describe('Backlog (F-0202)', () => {
     // O vínculo F-0256 chegou (appendRegisteredId rodou), e o título ficou.
     await waitFor(() => expect(readChats().chats.find((c) => c.featureId === 'F-0221')).toBeDefined())
     expect(readChats().chats.find((c) => c.featureId === 'F-0221')).toMatchObject({ title: 'Meu nome', titleSource: 'human' })
+    // clicar no compositor (registrar) fechou o menu; reabre para conferir a linha
+    fireEvent.click(screen.getByRole('button', { name: /conversas \(/i }))
     expect(screen.getByRole('button', { name: /renomear "Meu nome"/i })).toBeInTheDocument()
     expect(screen.queryByText(/→ F-0221/)).not.toBeInTheDocument()
   })
@@ -389,6 +391,8 @@ describe('Backlog — barra do chat com nova conversa e histórico (F-0431)', ()
 
     fireEvent.click(trigger())
     fireEvent.pointerDown(screen.getByPlaceholderText(/descreva/i))
+    expect(document.querySelector('.conversation-list')).not.toBeNull() // só o click fecha (renomear salva antes)
+    fireEvent.click(screen.getByPlaceholderText(/descreva/i))
     expect(document.querySelector('.conversation-list')).toBeNull()
   })
 
@@ -433,14 +437,42 @@ describe('Backlog — barra do chat com nova conversa e histórico (F-0431)', ()
     expect(document.querySelector('.conversation-list')).toBeNull()
   })
 
-  it('o gatilho aponta para o menu (aria-haspopup, aria-controls)', async () => {
+  it('o gatilho aponta para o menu (aria-controls), sem aria-haspopup; o menu tem nome', async () => {
     render(<Backlog />)
     await screen.findByPlaceholderText(/descreva/i)
     fireEvent.click(trigger())
-    expect(trigger()).toHaveAttribute('aria-haspopup', 'true')
+    expect(trigger()).not.toHaveAttribute('aria-haspopup')
     const id = trigger().getAttribute('aria-controls')
     expect(id).toBeTruthy()
-    expect(document.getElementById(id!)?.querySelector('.conversation-list')).not.toBeNull()
+    const menu = document.getElementById(id!)!
+    expect(menu.querySelector('.conversation-list')).not.toBeNull()
+    expect(menu).toHaveAccessibleName(/conversas/i)
+  })
+
+  it('a conversa ativa leva aria-current; selecionar foca o compositor da nova conversa', async () => {
+    writeChats(
+      [
+        { id: 'a', title: 'Conversa A', updatedAt: Date.now() - 1000, messages: [], model: '', effort: '' },
+        { id: 'b', title: 'Conversa B', updatedAt: Date.now(), messages: [], model: '', effort: '' },
+      ],
+      'b',
+    )
+    render(<Backlog />)
+    await screen.findByPlaceholderText(/descreva/i)
+    fireEvent.click(trigger())
+    expect(screen.getByText('Conversa B').closest('button')).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByText('Conversa A').closest('button')).not.toHaveAttribute('aria-current')
+    fireEvent.click(screen.getByText('Conversa A'))
+    await waitFor(() => expect(screen.getByPlaceholderText(/descreva/i)).toHaveFocus())
+  })
+
+  it('a ordem do DOM põe o painel do chat antes das candidatas, com o título primeiro', async () => {
+    payload = state([feature('F-0001')])
+    render(<Backlog />)
+    await screen.findByText('F-0001')
+    const nodes = ['.backlog-head', '.backlog-chat-shell', '.backlog-list-col'].map((q) => document.querySelector(q)!)
+    expect(nodes[0].compareDocumentPosition(nodes[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(nodes[1].compareDocumentPosition(nodes[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
 
@@ -453,8 +485,8 @@ describe('Backlog — coluna de histórico no painel do chat (F-0431)', () => {
     payload = state(Array.from({ length: 50 }, (_, i) => feature(`F-${String(i + 1).padStart(4, '0')}`)))
     render(<Backlog />)
     await screen.findByText('50 candidata(s)')
-    expect(rail().closest('.backlog-chat-body')).not.toBeNull()
-    expect(rail().closest('.backlog-chat')).not.toBeNull()
+    expect(rail().closest('.backlog-chat-shell')).not.toBeNull()
+    expect(rail().closest('.backlog-list-col')).toBeNull()
     expect(within(rail()).getByRole('button', { name: /nova conversa/i })).toBeInTheDocument()
     expect(rail().querySelector('.conversation-list')).not.toBeNull()
     const toolbar = document.querySelector('.backlog-chat-toolbar') as HTMLElement
@@ -490,5 +522,29 @@ describe('Backlog — coluna de histórico no painel do chat (F-0431)', () => {
     await waitFor(() =>
       expect(document.querySelector('.backlog-chat-toolbar .backlog-chat-refining')).toHaveTextContent('Refinando F-0001'),
     )
+  })
+
+  it('a coluna fica fora do key: trocar de conversa não a remonta; excluir foca a linha seguinte', async () => {
+    writeChats(
+      [
+        { id: 'a', title: 'Conversa A', updatedAt: Date.now() - 2000, messages: [], model: '', effort: '' },
+        { id: 'b', title: 'Conversa B', updatedAt: Date.now() - 1000, messages: [], model: '', effort: '' },
+        { id: 'c', title: 'Conversa C', updatedAt: Date.now(), messages: [], model: '', effort: '' },
+      ],
+      'c',
+    )
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<Backlog />)
+    await screen.findByPlaceholderText(/descreva/i)
+    const before = rail()
+    expect(within(rail()).getByText('Conversa C').closest('button')).toHaveAttribute('aria-current', 'true')
+    fireEvent.click(within(rail()).getByText('Conversa B'))
+    await waitFor(() => expect(within(rail()).getByText('Conversa B').closest('button')).toHaveAttribute('aria-current', 'true'))
+    expect(rail()).toBe(before)
+    // lista: C, B, A — excluir C (a primeira, não ativa) foca B
+    const rows = within(rail()).getAllByRole('listitem')
+    fireEvent.click(within(rows[0]).getByRole('button', { name: /excluir/i }))
+    await waitFor(() => expect(within(rail()).queryByText('Conversa C')).not.toBeInTheDocument())
+    expect(within(rail()).getByText('Conversa B').closest('button')).toHaveFocus()
   })
 })

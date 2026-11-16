@@ -543,7 +543,7 @@ type Props = {
   conversation: Conversation
   onUpdate: (patch: { messages?: ChatMsg[]; model?: string; effort?: string }) => void
   onRegistered?: (feature: Feature) => void
-  // F-0431: ausente = barra sem nova conversa nem histórico.
+  // F-0431: presente só na largura estreita (menu da barra); ausente = sem controles.
   history?: {
     conversations: Conversation[]
     activeId: string
@@ -552,23 +552,6 @@ type Props = {
     onDelete: (id: string) => void
     onRename: (id: string, title: string) => void
   }
-}
-
-// useWide (F-0431): >= 48rem o histórico é uma coluna; abaixo, o menu da barra.
-// Sem matchMedia (jsdom puro) vale o estreito. A lista é montada num lugar só.
-const WIDE = '(min-width: 48rem)'
-function useWide(): boolean {
-  const mq = () => (typeof window.matchMedia === 'function' ? window.matchMedia(WIDE) : null)
-  const [wide, setWide] = useState(() => mq()?.matches ?? false)
-  useEffect(() => {
-    const m = mq()
-    if (!m) return
-    const on = () => setWide(m.matches)
-    on()
-    m.addEventListener('change', on)
-    return () => m.removeEventListener('change', on)
-  }, [])
-  return wide
 }
 
 // HistoryMenu (F-0431): "Nova conversa" direto + gatilho "Conversas (N)" que
@@ -585,19 +568,23 @@ function HistoryMenu({ history }: { history: NonNullable<Props['history']> }) {
     if (!open) return
     const onKey = (e: globalThis.KeyboardEvent) => {
       // Só Esc de dentro do menu; o INPUT do renomear tem o Esc dele.
+      // Foco no body (clicou num item que sumiu, p.ex.) também vale.
       const el = e.target as HTMLElement | null
-      if (e.key !== 'Escape' || !root.current?.contains(el) || el?.tagName === 'INPUT') return
+      const inside = el === document.body || root.current?.contains(el)
+      if (e.key !== 'Escape' || !inside || (el?.tagName === 'INPUT' && el !== document.body)) return
       setOpen(false)
       trigger.current?.focus()
     }
-    const onDown = (e: globalThis.PointerEvent) => {
+    // click, não pointerdown: o mousedown fora já tirou o foco do campo de
+    // renomear (que salva) antes de o menu desmontar.
+    const onDown = (e: globalThis.MouseEvent) => {
       if (!root.current?.contains(e.target as Node)) setOpen(false)
     }
     document.addEventListener('keydown', onKey)
-    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('click', onDown)
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('click', onDown)
     }
   }, [open])
   return (
@@ -616,14 +603,14 @@ function HistoryMenu({ history }: { history: NonNullable<Props['history']> }) {
         ref={trigger}
         className="backlog-chat-history-trigger"
         aria-expanded={open}
-        aria-haspopup="true"
+        id={`${menuId}-trigger`}
         aria-controls={menuId}
         onClick={() => setOpen((o) => !o)}
       >
-        {t.backlogChat.conversationsTitle} ({history.conversations.length})
+        {t.backlogChat.conversationsTitle} ({history.conversations.length}) <span aria-hidden="true">▾</span>
       </button>
       {open && (
-        <div className="backlog-chat-history-popover" id={menuId}>
+        <div className="backlog-chat-history-popover" id={menuId} role="region" aria-labelledby={`${menuId}-trigger`}>
           <ConversationList
             conversations={history.conversations}
             activeId={history.activeId}
@@ -638,7 +625,6 @@ function HistoryMenu({ history }: { history: NonNullable<Props['history']> }) {
 }
 
 export default function BacklogChat({ conversation, onUpdate, onRegistered, history }: Props) {
-  const wide = useWide()
   const [messages, setMessages] = useState<ChatMsg[]>(conversation.messages)
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -1035,23 +1021,9 @@ export default function BacklogChat({ conversation, onUpdate, onRegistered, hist
       <div className="backlog-chat-toolbar">
         <h2>{t.backlogChat.title}</h2>
         {refineId && <span className="backlog-chat-refining">{t.backlogChat.refining(refineId)}</span>}
-        {history && !wide && <HistoryMenu history={history} />}
+        {history && <HistoryMenu history={history} />}
       </div>
       <div className="backlog-chat-body">
-{history && wide && (
-  <div className="backlog-chat-rail">
-    <button type="button" className="backlog-chat-new" onClick={history.onNew}>
-      {t.backlogChat.newConversation}
-    </button>
-    <ConversationList
-      conversations={history.conversations}
-      activeId={history.activeId}
-      onSelect={history.onSelect}
-      onDelete={history.onDelete}
-      onRename={history.onRename}
-    />
-  </div>
-)}
       <div className="backlog-chat-main">
       <div className="backlog-chat-history" ref={historyRef} onScroll={onHistoryScroll}>
         {messages.length === 0 && <p className="muted">{t.backlogChat.intro}</p>}
