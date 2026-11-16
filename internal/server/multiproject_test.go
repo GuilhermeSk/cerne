@@ -11,6 +11,7 @@ import (
 
 	"github.com/henriquesakata/cerne/internal/domain"
 	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/project"
 	"github.com/henriquesakata/cerne/internal/store"
 )
 
@@ -233,5 +234,34 @@ func TestMultiProjectUnknownProject(t *testing.T) {
 	rec := doMP(t, h, http.MethodGet, "/api/projects/ghost/state", "", mpSecret, &got)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown project: status %d, want 404", rec.Code)
+	}
+}
+
+// TestServer_RefusesForeignClone pins F-0434 criterion 2: a pid whose cache
+// clone is another backend is never registered over it nor served.
+func TestServer_RefusesForeignClone(t *testing.T) {
+	t.Setenv("CERNE_CACHE_DIR", t.TempDir())
+	h := NewMultiProject(mpSecret)
+	originA := seedBareBackend(t, "Projeto A")
+	originB := seedBareBackend(t, "Projeto B")
+
+	if rec := doMP(t, h, http.MethodPut, "/api/projects/proj-x", regBody(t, originA), mpSecret, nil); rec.Code != http.StatusOK {
+		t.Fatalf("register A: %d %s", rec.Code, rec.Body.String())
+	}
+	// Same pid, another backend: refused.
+	if rec := doMP(t, h, http.MethodPut, "/api/projects/proj-x", regBody(t, originB), mpSecret, nil); rec.Code != http.StatusConflict {
+		t.Fatalf("register B over A's clone: status %d, want 409; body %s", rec.Code, rec.Body.String())
+	}
+	// The registered backend (docs.lock) moved to B while the clone is A's.
+	_, projDir, _ := projectPaths("proj-x")
+	if err := project.SaveLock(projDir, project.Lock{Version: 1, Backend: originB}); err != nil {
+		t.Fatal(err)
+	}
+	rec := doMP(t, h, http.MethodGet, "/api/projects/proj-x/state", "", mpSecret, nil)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("state: status %d, want 409", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "Projeto A") {
+		t.Fatalf("response leaks the other backend's data: %s", rec.Body.String())
 	}
 }

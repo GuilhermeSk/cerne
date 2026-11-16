@@ -91,6 +91,14 @@ func (s *MultiServer) mux() http.Handler {
 			// The clone is created once, at register time; without this the
 			// served docs stay pinned to that day's SHA forever (client project F-0517).
 			// Throttled to one fetch per TTL per clone.
+			// F-0434: the registered backend is the one docs.lock pins; a clone
+			// whose origin is another backend is never served.
+			if lock, err := project.LoadLock(projDir); err == nil && lock.Backend != "" {
+				if err := gitback.CheckOrigin(repoDir, lock.Backend); err != nil {
+					writeJSON(w, http.StatusConflict, errorBody(err.Error()))
+					return
+				}
+			}
 			refreshProject(repoDir)
 			h(w, r, repoDir, projDir, pid)
 		}
@@ -133,6 +141,10 @@ func (s *MultiServer) handleRegister(w http.ResponseWriter, r *http.Request, pid
 		name = pid
 	}
 	if err := ensureProjectClone(repoDir, projDir, req.Backend, name, req.Modules); err != nil {
+		if errors.Is(err, gitback.ErrForeignClone) {
+			writeJSON(w, http.StatusConflict, errorBody(err.Error()))
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, errorBody(err.Error()))
 		return
 	}
@@ -153,6 +165,8 @@ func ensureProjectClone(repoDir, projDir, backend, name string, modules []string
 		}
 	} else if err != nil {
 		return err
+	} else if err := gitback.CheckOrigin(repoDir, backend); err != nil {
+		return err // F-0434: a cache clone of another backend is never reused
 	}
 	// Freshly provisioned backend: no layout yet. Initialize and push it so the
 	// project is usable immediately (mirrors the join path of `cerne init`).
