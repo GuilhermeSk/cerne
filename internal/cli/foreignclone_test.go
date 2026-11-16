@@ -12,9 +12,9 @@ import (
 
 func bareHead(t *testing.T, bare string) string {
 	t.Helper()
-	out, err := exec.Command("git", "-C", bare, "rev-parse", "HEAD").CombinedOutput()
+	out, err := exec.Command("git", "-C", bare, "for-each-ref").CombinedOutput()
 	if err != nil {
-		t.Fatalf("rev-parse %s: %v\n%s", bare, err, out)
+		t.Fatalf("for-each-ref %s: %v\n%s", bare, err, out)
 	}
 	return strings.TrimSpace(string(out))
 }

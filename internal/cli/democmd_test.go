@@ -11,6 +11,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // demoTools is a PATH dir holding git and nothing else — no sh (criterion 6).
@@ -303,5 +306,34 @@ func TestDemo_Refusals(t *testing.T) {
 	}
 	if _, err := runDemoCmd(t, filepath.Join(link, "demo")); !errors.Is(err, errDemoInsideProject) {
 		t.Errorf("symlinked parent into a project: err = %v, want errDemoInsideProject", err)
+	}
+}
+
+// TestDemo_AvoidsCollidingProjectID pins F-0434 criterion 4: a cache that
+// already holds a "taskflow" clone of another backend is left alone and the
+// demo takes "taskflow-2".
+func TestDemo_AvoidsCollidingProjectID(t *testing.T) {
+	demoEnv(t)
+	other := newOrigin(t)
+	headBefore := bareHead(t, other)
+	cache, err := project.CacheDir("taskflow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gitback.Clone(other, filepath.Join(cache, "repo")); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runDemoCmd(t, "cerne-demo"); err != nil {
+		t.Fatalf("cerne demo: %v\n%s", err, out)
+	}
+	cfg, _, err := project.LoadConfig(filepath.Join("cerne-demo", "taskflow"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProjectID != "taskflow-2" {
+		t.Errorf("project_id = %q, want taskflow-2", cfg.ProjectID)
+	}
+	if got := bareHead(t, other); got != headBefore {
+		t.Errorf("the other backend moved: %s -> %s", headBefore, got)
 	}
 }
