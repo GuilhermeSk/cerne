@@ -192,7 +192,7 @@ func TestSearchRebuildsIndexWithoutWorksTableOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conn.Exec(`INSERT INTO works_fts (work_id, state, actor, title, body) VALUES ('W-9999', 'active', 'x', 'marcador', '')`); err != nil {
+	if _, err := conn.Exec(`INSERT INTO works_fts (work_id, state, actor, raw_title, title, body) VALUES ('W-9999', 'active', 'x', 'marcador', 'marcador', '')`); err != nil {
 		t.Fatal(err)
 	}
 	conn.Close()
