@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -54,6 +55,17 @@ type entityHitJSON struct {
 	Docs []string `json:"docs"`
 }
 
+// maxWorkHits caps the works group (F-0408).
+const maxWorkHits = 5
+
+// workHitJSON is the --json shape of a matching work.
+type workHitJSON struct {
+	ID    string `json:"id"`
+	State string `json:"state"`
+	Actor string `json:"actor"`
+	Title string `json:"title"`
+}
+
 func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc bool) error {
 	// Offline by design: search reads the cached clone and the local index,
 	// never the remote. 'cerne pull' is the sync point that refreshes both.
@@ -98,7 +110,14 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc 
 		return err
 	}
 
+	// The works group is a bonus: a failure to read it never fails the search.
+	works, _ := index.SearchWorks(dbPath, query, maxWorkHits)
+
 	if asJSON {
+		workHits := make([]workHitJSON, len(works))
+		for i, w := range works {
+			workHits[i] = workHitJSON{w.ID, w.State, w.Actor, w.Title}
+		}
 		hits := make([]searchHitJSON, len(results))
 		entities := make([]entityHitJSON, len(results))
 		for i, r := range results {
@@ -120,14 +139,16 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc 
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		return enc.Encode(struct {
-			Results       any     `json:"results"`
-			Broadened     bool    `json:"broadened,omitempty"`
-			IndexSyncedAt *string `json:"index_synced_at"`
-		}{payload, broadened, syncedAtJSON(synced)})
+			Results       any           `json:"results"`
+			Broadened     bool          `json:"broadened,omitempty"`
+			IndexSyncedAt *string       `json:"index_synced_at"`
+			Works         []workHitJSON `json:"works"`
+		}{payload, broadened, syncedAtJSON(synced), workHits})
 	}
 
 	if len(results) == 0 {
 		fmt.Fprintf(out, "Nothing found for \"%s\".\n", query)
+		printWorks(out, works)
 		return nil
 	}
 	if broadened && (perDoc || results[0].Partial) {
@@ -146,7 +167,20 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc 
 			fmt.Fprintln(out, "  "+r.Snippet)
 		}
 	}
+	printWorks(out, works)
 	return nil
+}
+
+// printWorks lists the matching works after the entity results: "Is anyone on
+// it already?" is a different question from "what do we know".
+func printWorks(out io.Writer, works []index.WorkResult) {
+	if len(works) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "\nWorks:")
+	for _, w := range works {
+		fmt.Fprintf(out, "%s [%s] %s — %s\n", w.ID, w.State, w.Actor, w.Title)
+	}
 }
 
 // resultHeader renders one --per-doc hit header:
