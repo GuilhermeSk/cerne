@@ -23,6 +23,7 @@ import CommandProposal, { CopyCommands, ToolRuns } from './CommandProposal'
 import Markdown from './Markdown'
 import NoteProposal from './NoteProposal'
 import ProposalDraft from './ProposalDraft'
+import ConversationList from './ConversationList'
 import { useT } from './i18n'
 import type { Conversation } from './useBacklogChats'
 
@@ -541,9 +542,73 @@ type Props = {
   conversation: Conversation
   onUpdate: (patch: { messages?: ChatMsg[]; model?: string; effort?: string }) => void
   onRegistered?: (feature: Feature) => void
+  // F-0431: ausente = barra sem nova conversa nem histórico.
+  history?: {
+    conversations: Conversation[]
+    activeId: string
+    onSelect: (id: string) => void
+    onNew: () => void
+    onDelete: (id: string) => void
+    onRename: (id: string, title: string) => void
+  }
 }
 
-export default function BacklogChat({ conversation, onUpdate, onRegistered }: Props) {
+// HistoryMenu (F-0431): "Nova conversa" direto + gatilho "Conversas (N)" que
+// abre a lista num menu. Sem popover nativo (o jsdom do Vitest não tem
+// showPopover): estado `open` e, enquanto aberto, Esc devolve o foco ao gatilho
+// e pointerdown fora fecha. Esc dentro do editor de nome é do editor.
+function HistoryMenu({ history }: { history: NonNullable<Props['history']> }) {
+  const { t } = useT()
+  const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement | null>(null)
+  const trigger = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape' || (e.target as HTMLElement | null)?.tagName === 'INPUT') return
+      setOpen(false)
+      trigger.current?.focus()
+    }
+    const onDown = (e: globalThis.PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointerdown', onDown)
+    }
+  }, [open])
+  return (
+    <div className="backlog-chat-history-menu" ref={root}>
+      <button type="button" className="backlog-chat-new" onClick={() => { setOpen(false); history.onNew() }}>
+        {t.backlogChat.newConversation}
+      </button>
+      <button
+        type="button"
+        ref={trigger}
+        className="backlog-chat-history-trigger"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {t.backlogChat.conversationsTitle} ({history.conversations.length})
+      </button>
+      {open && (
+        <div className="backlog-chat-history-popover">
+          <ConversationList
+            conversations={history.conversations}
+            activeId={history.activeId}
+            onSelect={(id) => { setOpen(false); history.onSelect(id) }}
+            onDelete={history.onDelete}
+            onRename={history.onRename}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function BacklogChat({ conversation, onUpdate, onRegistered, history }: Props) {
   const [messages, setMessages] = useState<ChatMsg[]>(conversation.messages)
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -940,6 +1005,7 @@ export default function BacklogChat({ conversation, onUpdate, onRegistered }: Pr
       <div className="backlog-chat-toolbar">
         <h2>{t.backlogChat.title}</h2>
         {refineId && <span className="backlog-chat-refining">{t.backlogChat.refining(refineId)}</span>}
+        {history && <HistoryMenu history={history} />}
       </div>
       <div className="backlog-chat-body">
       <div className="backlog-chat-main">

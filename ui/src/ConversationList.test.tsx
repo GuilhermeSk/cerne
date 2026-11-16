@@ -20,7 +20,7 @@ describe('ConversationList (F-0219)', () => {
   it('critério 1: renderiza ordenada por updatedAt desc, com a ativa destacada', () => {
     const conversations = [conv('a', 'Mais antiga', 1000), conv('b', 'Mais recente', 3000), conv('c', 'Do meio', 2000)]
     render(
-      <ConversationList conversations={conversations} activeId="c" onSelect={vi.fn()} onNew={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />,
+      <ConversationList conversations={conversations} activeId="c" onSelect={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />,
     )
     const items = screen.getAllByRole('listitem')
     expect(items.map((li) => li.textContent)).toEqual([
@@ -34,7 +34,7 @@ describe('ConversationList (F-0219)', () => {
 
   it('critério 1: sem título, mostra o placeholder de "sem título"', () => {
     render(
-      <ConversationList conversations={[conv('a', '', 1000)]} activeId="a" onSelect={vi.fn()} onNew={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />,
+      <ConversationList conversations={[conv('a', '', 1000)]} activeId="a" onSelect={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />,
     )
     expect(screen.getByText(/sem título/i)).toBeInTheDocument()
   })
@@ -46,7 +46,7 @@ describe('ConversationList (F-0219)', () => {
         conversations={[conv('a', 'Conversa A', 1000), conv('b', 'Conversa B', 2000)]}
         activeId="b"
         onSelect={onSelect}
-        onNew={vi.fn()}
+       
         onDelete={vi.fn()} onRename={vi.fn()}
       />,
     )
@@ -54,17 +54,10 @@ describe('ConversationList (F-0219)', () => {
     expect(onSelect).toHaveBeenCalledWith('a')
   })
 
-  it('botão "Nova conversa" dispara onNew', () => {
-    const onNew = vi.fn()
-    render(<ConversationList conversations={[conv('a', 'X', 1000)]} activeId="a" onSelect={vi.fn()} onNew={onNew} onDelete={vi.fn()} onRename={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: /nova conversa/i }))
-    expect(onNew).toHaveBeenCalled()
-  })
-
   it('critério 4: excluir dispara onDelete com o id (a confirmação vive no hook, não aqui)', () => {
     const onDelete = vi.fn()
     render(
-      <ConversationList conversations={[conv('a', 'Conversa A', 1000)]} activeId="a" onSelect={vi.fn()} onNew={vi.fn()} onDelete={onDelete} onRename={vi.fn()} />,
+      <ConversationList conversations={[conv('a', 'Conversa A', 1000)]} activeId="a" onSelect={vi.fn()} onDelete={onDelete} onRename={vi.fn()} />,
     )
     fireEvent.click(screen.getByRole('button', { name: /excluir/i }))
     expect(onDelete).toHaveBeenCalledWith('a')
@@ -79,7 +72,7 @@ describe('ConversationList — idade (F-0310)', () => {
     try {
       const timersBefore = vi.getTimerCount()
       const { unmount } = render(
-        <ConversationList conversations={[conv('a', 'Conversa A', Date.now() - 30_000)]} activeId="a" onSelect={vi.fn()} onNew={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />,
+        <ConversationList conversations={[conv('a', 'Conversa A', Date.now() - 30_000)]} activeId="a" onSelect={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />,
       )
       expect(screen.getByText('agora')).toBeInTheDocument()
       act(() => {
@@ -96,7 +89,7 @@ describe('ConversationList — idade (F-0310)', () => {
 
 describe('ConversationList — renomear (F-0310)', () => {
   function setup() {
-    const props = { onSelect: vi.fn(), onNew: vi.fn(), onDelete: vi.fn(), onRename: vi.fn() }
+    const props = { onSelect: vi.fn(), onDelete: vi.fn(), onRename: vi.fn() }
     render(
       <ConversationList conversations={[conv('a', 'Conversa A', 1000), conv('b', 'Conversa B', 2000)]} activeId="b" {...props} />,
     )
@@ -199,7 +192,7 @@ describe('ConversationList — renomear (F-0310)', () => {
     ['blur', (el: HTMLElement) => fireEvent.blur(el)],
     ['Enter', (el: HTMLElement) => fireEvent.keyDown(el, { key: 'Enter' })],
   ])('C4: sair sem editar (%s) depois do resumo não grava o título velho', (_how, leave) => {
-    const p = { onSelect: vi.fn(), onNew: vi.fn(), onDelete: vi.fn(), onRename: vi.fn() }
+    const p = { onSelect: vi.fn(), onDelete: vi.fn(), onRename: vi.fn() }
     const { rerender } = render(<ConversationList conversations={[conv('a', 'Derivado', 1000)]} activeId="a" {...p} />)
     fireEvent.click(screen.getByRole('button', { name: /renomear "derivado"/i }))
     rerender(<ConversationList conversations={[conv('a', 'Resumo do LLM', 1000)]} activeId="a" {...p} />)
@@ -212,7 +205,7 @@ describe('ConversationList — renomear (F-0310)', () => {
   // tooltip e no nome acessível da linha.
   it('C9: título cortado pela coluna expõe o nome inteiro (tooltip e nome acessível)', () => {
     const full = 'Exportar relatórios detalhados em PDF para a auditoria anual'
-    render(<ConversationList conversations={[conv('a', full, 1000)]} activeId="a" onSelect={vi.fn()} onNew={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />)
+    render(<ConversationList conversations={[conv('a', full, 1000)]} activeId="a" onSelect={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />)
     const row = screen.getByRole('button', { name: new RegExp(`^${full}`) })
     expect(row).toHaveAttribute('title', full)
     expect(row).toHaveAccessibleName(expect.stringContaining(full))
@@ -231,7 +224,7 @@ describe('ConversationList — renomear (F-0310)', () => {
     try {
       render(
         <I18nProvider>
-          <ConversationList conversations={[conv('a', 'Conversa A', 1000)]} activeId="a" onSelect={vi.fn()} onNew={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />
+          <ConversationList conversations={[conv('a', 'Conversa A', 1000)]} activeId="a" onSelect={vi.fn()} onDelete={vi.fn()} onRename={vi.fn()} />
         </I18nProvider>,
       )
       fireEvent.click(screen.getByRole('button', { name: 'Rename "Conversa A"' }))

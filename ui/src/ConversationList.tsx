@@ -14,15 +14,14 @@ type Props = {
   conversations: Conversation[]
   activeId: string
   onSelect: (id: string) => void
-  onNew: () => void
   onDelete: (id: string) => void
   onRename: (id: string, title: string) => void
 }
 
-// ConversationList (F-0219) é a seção "Conversas" da coluna esquerda do
-// Backlog: <details> nativo cobre o colapsável de graça (critério 1), sem
-// estado nem dependência nova.
-export default function ConversationList({ conversations, activeId, onSelect, onNew, onDelete, onRename }: Props) {
+// ConversationList (F-0219) é o conteúdo do menu "Conversas" da barra do chat
+// (F-0431): só a lista; o gatilho, "Nova conversa" e o abrir/fechar vivem no
+// BacklogChat.
+export default function ConversationList({ conversations, activeId, onSelect, onDelete, onRename }: Props) {
   const { t } = useT()
   const sorted = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt)
   const [, setTick] = useState(0)
@@ -60,13 +59,7 @@ export default function ConversationList({ conversations, activeId, onSelect, on
   }
 
   return (
-    <details className="conversation-list" open>
-      <summary>
-        {t.backlogChat.conversationsTitle} ({sorted.length})
-      </summary>
-      <button type="button" className="conversation-list-new" onClick={onNew}>
-        {t.backlogChat.newConversation}
-      </button>
+    <div className="conversation-list">
       <ul>
         {sorted.map((c) => (
           <li
@@ -132,6 +125,6 @@ export default function ConversationList({ conversations, activeId, onSelect, on
           </li>
         ))}
       </ul>
-    </details>
+    </div>
   )
 }

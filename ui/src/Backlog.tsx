@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { fetchState, type Feature } from './api'
 import Tag from './Tag'
 import BacklogChat from './BacklogChat'
-import ConversationList from './ConversationList'
 import { useBacklogChats } from './useBacklogChats'
 import { sortByPriority } from './priority'
 import { useLiveVersion } from './live'
@@ -13,7 +12,7 @@ import { useT } from './i18n'
 // com trabalho comprometido dava a impressão errada de urgência.
 // F-0210: layout de duas colunas — lista à esquerda, chat com o agente de
 // domínio à direita, pra que a candidata registrada apareça ali mesmo.
-// F-0219: a coluna esquerda ganha a lista de conversas (ConversationList);
+// F-0219/F-0431: a lista de conversas vive num menu da barra do chat;
 // BacklogChat é montado com key={chats.active.id} — trocar de conversa
 // remonta o chat e reseta seu estado efêmero de graça.
 export default function Backlog() {
@@ -59,19 +58,19 @@ export default function Backlog() {
             ))}
           </div>
         )}
-        <ConversationList
-          conversations={chats.chats}
-          activeId={chats.active.id}
-          onSelect={chats.select}
-          onNew={() => chats.newConversation()}
-          onDelete={(id) => chats.deleteConversation(id)}
-          onRename={chats.renameConversation}
-        />
       </div>
       <BacklogChat
         key={chats.active.id}
         conversation={chats.active}
         onUpdate={chats.updateActive}
+        history={{
+          conversations: chats.chats,
+          activeId: chats.active.id,
+          onSelect: chats.select,
+          onNew: () => chats.newConversation(),
+          onDelete: (id) => chats.deleteConversation(id),
+          onRename: chats.renameConversation,
+        }}
         onRegistered={(feature) => {
           chats.appendRegisteredId(feature.id)
           setRefreshKey((k) => k + 1)
