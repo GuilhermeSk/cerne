@@ -405,7 +405,7 @@ func runCostBackfill(cmd *cobra.Command, dir string, since time.Time, apply, asJ
 		}
 	}
 	for _, a := range r.Ambiguous {
-		fmt.Fprintf(text, "ambiguous: %s/%s (%s) falls on %s\n", a.Session, a.Agent, a.Role, strings.Join(a.Entities, ", "))
+		fmt.Fprintf(text, "ambiguous: %s/%s (%s) falls on %s (%s)\n", a.Session, a.Agent, a.Role, strings.Join(a.Entities, ", "), a.Reason)
 	}
 	for _, a := range r.Partial {
 		fmt.Fprintf(text, "partial: %s/%s (%s) counts only the messages a binding governs\n", a.Session, a.Agent, a.Role)

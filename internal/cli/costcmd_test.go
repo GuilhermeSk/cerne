@@ -636,6 +636,29 @@ func TestCostBackfillRolesReportsWithoutWriting(t *testing.T) {
 	}
 }
 
+// TestCostBackfillRolesNamesWhyAmbiguous (F-0411 crit. 6): the ambiguous line
+// says why — here, a prompt that cites a feature other than the binding's —
+// and the JSON carries the same reason.
+func TestCostBackfillRolesNamesWhyAmbiguous(t *testing.T) {
+	projDir, _ := backfillProject(t, domain.StateImplemented)
+	root := os.Getenv("CLAUDE_CONFIG_DIR")
+	writeTranscript(t, root, "sess-1/subagents/agent-y.jsonl",
+		`{"type":"user","timestamp":"2026-11-01T10:03:30Z","sessionId":"sess-1","isSidechain":true,"agentId":"y","message":{"role":"user","content":"Compare the options for F-0002 in /tmp/a.md"}}`,
+		costLine("2026-11-01T10:04:00Z", "m3", "claude-opus-5-5", "y", 1, 1, 1, 1),
+		`{"type":"assistant","timestamp":"2026-11-01T10:04:01Z","sessionId":"sess-1","isSidechain":true,"agentId":"y","message":{"id":"m3","role":"assistant","content":[{"type":"text","text":"Because.\n\nVEREDITO: A"}]}}`)
+	out, err := execCerne(t, "cost", "backfill-roles", "--dir", projDir)
+	if err != nil {
+		t.Fatalf("backfill-roles: %v\n%s", err, out)
+	}
+	if want := "ambiguous: sess-1/y (judge) falls on F-0001, F-0002 (prompt cites another feature)\n"; !strings.Contains(out, want) {
+		t.Errorf("output lacks %q:\n%s", want, out)
+	}
+	js, err := execCerne(t, "cost", "backfill-roles", "--json", "--dir", projDir)
+	if err != nil || !strings.Contains(js, `"reason": "prompt cites another feature"`) && !strings.Contains(js, `"reason":"prompt cites another feature"`) {
+		t.Errorf("--json lacks the reason: %v\n%s", err, js)
+	}
+}
+
 // TestCostBackfillRolesApplyImplemented (F-0396 crit. 4, 6): --apply binds the
 // subagent under its role (a retro bind) and completes the result's anchor
 // without lowering it; a second run writes nothing and says so.
