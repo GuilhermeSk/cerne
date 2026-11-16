@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchState, type Feature } from './api'
 import Tag from './Tag'
-import BacklogChat from './BacklogChat'
+import BacklogChat, { ChatToolbar, HistoryMenu } from './BacklogChat'
 import ConversationList from './ConversationList'
 import { useBacklogChats } from './useBacklogChats'
 import { sortByPriority } from './priority'
@@ -53,15 +53,21 @@ export default function Backlog() {
     focusComposer.current = false
     document.querySelector<HTMLElement>('.backlog-chat textarea')?.focus()
   }, [chats.active.id])
+  // O flag vale só para esta ação: se a conversa não mudar (confirmação do cap
+  // recusada), é solto logo depois do flush.
+  const armFocus = () => {
+    focusComposer.current = true
+    setTimeout(() => (focusComposer.current = false), 0)
+  }
   const history = {
     conversations: chats.chats,
     activeId: chats.active.id,
     onSelect: (id: string) => {
-      if (id !== chats.active.id) focusComposer.current = true
+      if (id !== chats.active.id) armFocus()
       chats.select(id)
     },
     onNew: () => {
-      focusComposer.current = true
+      armFocus()
       chats.newConversation()
     },
     onDelete: (id: string) => chats.deleteConversation(id),
@@ -88,9 +94,14 @@ export default function Backlog() {
           leitura iguais à visual abaixo de 60rem); acima, o grid posiciona. A
           coluna de histórico fica fora do key, para manter rolagem e foco ao
           trocar de conversa. */}
-      <div className="backlog-chat-shell">
+      <div className={wide ? 'backlog-chat-shell' : 'backlog-chat-shell backlog-chat-shell-stack'}>
+        {!wide && (
+          <ChatToolbar refineId={chats.active.featureId ?? ''}>
+            <HistoryMenu history={history} />
+          </ChatToolbar>
+        )}
         {wide && (
-          <div className="backlog-chat-rail">
+          <div className="backlog-chat-rail" role="region" aria-label={t.backlogChat.conversationsTitle}>
             <button type="button" className="backlog-chat-new" onClick={history.onNew}>
               {t.backlogChat.newConversation}
             </button>
@@ -107,7 +118,7 @@ export default function Backlog() {
           key={chats.active.id}
           conversation={chats.active}
           onUpdate={chats.updateActive}
-          history={wide ? undefined : history}
+          toolbarOutside={!wide}
           onRegistered={(feature) => {
             chats.appendRegisteredId(feature.id)
             setRefreshKey((k) => k + 1)

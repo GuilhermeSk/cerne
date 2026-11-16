@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import Backlog from './Backlog'
 import { readChats, writeChats, type Conversation } from './useBacklogChats'
@@ -473,6 +473,97 @@ describe('Backlog — barra do chat com nova conversa e histórico (F-0431)', ()
     const nodes = ['.backlog-head', '.backlog-chat-shell', '.backlog-list-col'].map((q) => document.querySelector(q)!)
     expect(nodes[0].compareDocumentPosition(nodes[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(nodes[1].compareDocumentPosition(nodes[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('Backlog — menu estreito fora do key do chat (F-0431)', () => {
+  beforeEach(() => mockWidth(false))
+  const trigger = () => screen.getByRole('button', { name: /conversas \(/i })
+  const three = () =>
+    writeChats(
+      [
+        { id: 'a', title: 'Conversa A', updatedAt: Date.now() - 2000, messages: [], model: '', effort: '' },
+        { id: 'b', title: 'Conversa B', updatedAt: Date.now() - 1000, messages: [], model: '', effort: '' },
+        { id: 'c', title: 'Conversa C', updatedAt: Date.now(), messages: [], model: '', effort: '' },
+      ],
+      'c',
+    )
+
+  it('item 2: excluir a conversa ativa mantém o menu aberto e foca a linha seguinte', async () => {
+    three()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<Backlog />)
+    await screen.findByPlaceholderText(/descreva/i)
+    fireEvent.click(trigger())
+    const rows = screen.getAllByRole('listitem') // C, B, A
+    fireEvent.click(within(rows[0]).getByRole('button', { name: /excluir/i }))
+    await waitFor(() => expect(screen.queryByText('Conversa C')).not.toBeInTheDocument())
+    expect(document.querySelector('.conversation-list')).not.toBeNull()
+    expect(screen.getByText('Conversa B').closest('button')).toHaveFocus()
+    expect(document.body).not.toHaveFocus()
+  })
+
+  it('item 1: excluir uma linha (alvo removido durante o clique) não conta como clique fora', async () => {
+    three()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<Backlog />)
+    await screen.findByPlaceholderText(/descreva/i)
+    fireEvent.click(trigger())
+    const rows = screen.getAllByRole('listitem')
+    fireEvent.click(within(rows[2]).getByRole('button', { name: /excluir/i })) // A, inativa
+    await waitFor(() => expect(screen.queryByText('Conversa A')).not.toBeInTheDocument())
+    expect(document.querySelector('.conversation-list')).not.toBeNull()
+  })
+})
+
+describe('Backlog — largura reativa e foco (F-0431)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  it('item 3: o hook reage ao change do matchMedia e solta o listener ao desmontar', async () => {
+    let handler: (() => void) | undefined
+    const mq = {
+      matches: false,
+      media: '',
+      addEventListener: (_: string, h: () => void) => (handler = h),
+      removeEventListener: vi.fn(),
+    }
+    vi.stubGlobal('matchMedia', () => mq)
+    const { unmount } = render(<Backlog />)
+    await screen.findByPlaceholderText(/descreva/i)
+    expect(document.querySelector('.backlog-chat-rail')).toBeNull()
+    expect(screen.getByRole('button', { name: /conversas \(/i })).toBeInTheDocument()
+    mq.matches = true
+    act(() => handler!())
+    expect(document.querySelector('.backlog-chat-rail')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: /conversas \(/i })).toBeNull()
+    unmount()
+    expect(mq.removeEventListener).toHaveBeenCalled()
+  })
+
+  it('item 4: no largo, selecionar e criar focam o compositor; a primeira carga não move o foco', async () => {
+    mockWidth(true)
+    writeChats(
+      [
+        { id: 'a', title: 'Conversa A', updatedAt: Date.now() - 1000, messages: [], model: '', effort: '' },
+        { id: 'b', title: 'Conversa B', updatedAt: Date.now(), messages: [], model: '', effort: '' },
+      ],
+      'b',
+    )
+    render(<Backlog />)
+    const composer = await screen.findByPlaceholderText(/descreva/i)
+    expect(composer).not.toHaveFocus()
+    const rail = document.querySelector('.backlog-chat-rail') as HTMLElement
+    fireEvent.click(within(rail).getByText('Conversa A'))
+    await waitFor(() => expect(screen.getByPlaceholderText(/descreva/i)).toHaveFocus())
+    ;(screen.getByRole('button', { name: /nova conversa/i }) as HTMLElement).focus()
+    fireEvent.click(screen.getByRole('button', { name: /nova conversa/i }))
+    await waitFor(() => expect(screen.getByPlaceholderText(/descreva/i)).toHaveFocus())
+  })
+
+  it('item 5: a coluna tem nome acessível', async () => {
+    mockWidth(true)
+    render(<Backlog />)
+    await screen.findByPlaceholderText(/descreva/i)
+    expect(screen.getByRole('region', { name: 'Conversas' })).toBe(document.querySelector('.backlog-chat-rail'))
   })
 })
 

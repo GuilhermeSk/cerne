@@ -361,8 +361,11 @@ h2 {
   background: var(--surface-2);
 }
 
+.backlog-chat-shell-stack { flex-direction: column; }
+
 .backlog-chat-shell > .backlog-chat {
   flex: 1;
+  min-height: 0;
   border: 0;
   padding: 0;
   background: none;
