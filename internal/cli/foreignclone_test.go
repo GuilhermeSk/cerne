@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,4 +94,113 @@ func TestResolve_RelativeBackendIsRelativeToCernerc(t *testing.T) {
 func cacheRootEnv(t *testing.T) string {
 	t.Helper()
 	return os.Getenv("CERNE_CACHE_DIR")
+}
+
+// breakOrigin renames the clone's origin remote, so its origin cannot be read.
+func breakOrigin(t *testing.T, repoDir string) {
+	t.Helper()
+	cfg := filepath.Join(repoDir, ".git", "config")
+	raw, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(strings.Replace(string(raw), `[remote "origin"]`, `[remote "gone"]`, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestResolve_RefusesUnverifiableClone: a clone without an origin cannot be
+// proven ours and is refused with its own sentinel (F-0434).
+func TestResolve_RefusesUnverifiableClone(t *testing.T) {
+	projA, _, repoDir := setupProject(t)
+	breakOrigin(t, repoDir)
+	out, err := execCerne(t, "brief", "--dir", projA)
+	if !errors.Is(err, gitback.ErrUnverifiableClone) {
+		t.Fatalf("err = %v, want ErrUnverifiableClone\n%s", err, out)
+	}
+}
+
+// cacheSnapshot lists every file under dir with size and mtime.
+func cacheSnapshot(t *testing.T, dir string) string {
+	t.Helper()
+	var b strings.Builder
+	_ = filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err == nil {
+			fmt.Fprintf(&b, "%s %d %d\n", p, fi.Size(), fi.ModTime().UnixNano())
+		}
+		return nil
+	})
+	return b.String()
+}
+
+// TestHooks_FailOpenOnForeignClone: every hook entry point that reads the
+// backend clone exits 0, leaks nothing of the clone and writes nothing when
+// the clone is another backend's or unverifiable (F-0434).
+func TestHooks_FailOpenOnForeignClone(t *testing.T) {
+	for _, scenario := range []string{"foreign", "unverifiable"} {
+		t.Run(scenario, func(t *testing.T) {
+			var proj string
+			var origin string
+			if scenario == "foreign" {
+				var projA string
+				projA, origin, proj = foreignPair(t)
+				seedLeak(t, projA)
+			} else {
+				var repoDir string
+				proj, origin, repoDir = setupProject(t)
+				seedLeak(t, proj)
+				breakOrigin(t, repoDir)
+			}
+			cacheDir := os.Getenv("CERNE_CACHE_DIR")
+			msg := writeMsgFile(t, proj, "feat: x (F-0001)\n")
+			enableWorkGate(t, proj)
+			head, snap := bareHead(t, origin), cacheSnapshot(t, cacheDir)
+			for _, h := range []struct {
+				name  string
+				stdin string
+				args  []string
+			}{
+				{"bind-work", hookJSON(t, "s1", proj, "Bash", map[string]any{"command": `cerne work start "Leak work"`}, map[string]any{"stdout": "W-0001 criada (active) — Leak work"}), []string{"hook", "bind-work"}},
+				{"work-gate", hookJSON(t, "s1", proj, "Edit", map[string]any{"file_path": filepath.Join(proj, "a.go")}, nil), []string{"hook", "work-gate"}},
+				{"stop-check", stopPayload(t, "s1", proj), []string{"hook", "stop-check"}},
+				{"precompact", stopPayload(t, "s1", proj), []string{"hook", "precompact"}},
+				{"session-context", sessionPayload("s1", proj, "compact"), []string{"hook", "session-context"}},
+				{"channel", sessionStartJSON(t, "s1", proj), []string{"hook", "channel", "--point", "session-start"}},
+				{"provenance", hookJSON(t, "s1", proj, "Bash", map[string]any{"command": "git push"}, nil), []string{"hook", "provenance"}},
+				{"commit-trailer", "", []string{"hook", "commit-trailer", msg}},
+				{"guard commit-msg", "", []string{"guard", "commit-msg", msg}},
+			} {
+				out, err := execCerneStdin(t, h.stdin, h.args...)
+				if err != nil {
+					t.Errorf("%s: exit %v, want fail-open\n%s", h.name, err, out)
+				}
+				if strings.Contains(out, "Leak") || strings.Contains(out, "W-0001") || strings.Contains(out, "F-0001") {
+					t.Errorf("%s leaks clone data:\n%s", h.name, out)
+				}
+			}
+			if raw, _ := os.ReadFile(msg); string(raw) != "feat: x (F-0001)\n" {
+				t.Errorf("commit-msg rewritten: %q", raw)
+			}
+			if got := bareHead(t, origin); got != head {
+				t.Errorf("backend moved")
+			}
+			if got := cacheSnapshot(t, cacheDir); got != snap {
+				t.Errorf("hooks wrote into the cache:\nbefore:\n%s\nafter:\n%s", snap, got)
+			}
+		})
+	}
+}
+
+// seedLeak puts a feature and an active work, both titled "Leak ...", in the
+// backend of projDir.
+func seedLeak(t *testing.T, projDir string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"feature", "new", "Leak marker", "--context", "ctx", "--dir", projDir},
+		{"work", "start", "Leak work", "--dir", projDir},
+	} {
+		if out, err := execCerne(t, args...); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+	}
 }
