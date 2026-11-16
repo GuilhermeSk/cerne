@@ -111,6 +111,10 @@ func resolvePaths(startDir string) (projCtx, error) {
 		}
 	} else if err != nil {
 		return projCtx{}, err
+	} else if err := gitback.CheckOrigin(repoDir, cfg.Backend); err != nil {
+		// F-0434: the cache is keyed by project_id alone; never read or write
+		// through a clone of another backend.
+		return projCtx{}, err
 	}
 	return projCtx{cfg: cfg, projDir: projDir, repoDir: repoDir}, nil
 }
