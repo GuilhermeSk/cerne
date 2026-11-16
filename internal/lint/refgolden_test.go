@@ -31,6 +31,7 @@ func TestRefToSupersededGolden(t *testing.T) {
 		{ID: "F-0004", Title: "Acme ſtore ingest", State: domain.StateSuperseded, SupersededBy: "F-0002"},
 		{ID: "F-0005", Title: "Café Münster export", State: domain.StateRejected},
 		{ID: "F-0006", Title: "Docs", State: domain.StateInDevelopment},
+		{ID: "F-0008", Title: "Orchard \u212aelvin gauge", State: domain.StateRejected},
 		{ID: "F-0007", Title: "Imported thing", State: domain.StateSuperseded, SupersededBy: "F-0002"},
 	}
 	for _, f := range feats {
@@ -44,7 +45,7 @@ func TestRefToSupersededGolden(t *testing.T) {
 	}
 	docs := map[string]string{
 		"F-0006": "see f-0001 and LEDGER SETTLEMENT FLOW.\nalso f-0003, orchard Kelvin sensor.\nACME STORE INGEST and acme ſtore ingest.\n" +
-			"CAFÉ MÜNSTER EXPORT here; café münster export too.\nboletos and Settle, plus case 0090 notes.\nf-00011 is not a mention.\n",
+			"CAFÉ MÜNSTER EXPORT here; café münster export too.\nboletos and Settle, plus case 0090 notes.\nORCHARD KELVIN GAUGE and orchard kelvin gauge.\nf-00011 is not a mention.\n",
 		"F-0002": "clean doc, mentions F-0001 <!-- lint:ok-superseded F-0001 -->\n",
 	}
 	for id, body := range docs {

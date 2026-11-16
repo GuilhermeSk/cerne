@@ -48,6 +48,15 @@
     "Rule": "ref-to-superseded",
     "Entity": "F-0006",
     "File": "content/features/F-0006/spec.md",
+    "Detail": "mentions F-0008 (\"Orchard Kelvin gauge\"), which is rejected",
+    "Line": 0,
+    "Fix": "",
+    "Downgraded": false
+  },
+  {
+    "Rule": "ref-to-superseded",
+    "Entity": "F-0006",
+    "File": "content/features/F-0006/spec.md",
     "Detail": "mentions case 0090 (F-0007 \"Imported thing\"), which is superseded — use F-0002",
     "Line": 0,
     "Fix": "",
