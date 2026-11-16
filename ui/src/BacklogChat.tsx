@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -209,6 +210,8 @@ function MenuSelect({
         className="chat-menu-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-haspopup="true"
+        aria-controls={menuId}
         aria-label={label}
         onClick={() => setOpen((o) => !o)}
       >
@@ -394,6 +397,8 @@ function ModelMenu({
         className="chat-menu-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-haspopup="true"
+        aria-controls={menuId}
         aria-label={label}
         onClick={() => {
           setOpen((o) => !o)
@@ -556,16 +561,19 @@ type Props = {
 // HistoryMenu (F-0431): "Nova conversa" direto + gatilho "Conversas (N)" que
 // abre a lista num menu. Sem popover nativo (o jsdom do Vitest não tem
 // showPopover): estado `open` e, enquanto aberto, Esc devolve o foco ao gatilho
-// e pointerdown fora fecha. Esc dentro do editor de nome é do editor.
+// e pointerdown fora fecha. Esc só vale de dentro do menu; no editor de nome é do editor.
 function HistoryMenu({ history }: { history: NonNullable<Props['history']> }) {
   const { t } = useT()
   const [open, setOpen] = useState(false)
+  const menuId = useId()
   const root = useRef<HTMLDivElement | null>(null)
   const trigger = useRef<HTMLButtonElement | null>(null)
   useEffect(() => {
     if (!open) return
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Escape' || (e.target as HTMLElement | null)?.tagName === 'INPUT') return
+      // Só Esc de dentro do menu; o INPUT do renomear tem o Esc dele.
+      const el = e.target as HTMLElement | null
+      if (e.key !== 'Escape' || !root.current?.contains(el) || el?.tagName === 'INPUT') return
       setOpen(false)
       trigger.current?.focus()
     }
@@ -580,7 +588,13 @@ function HistoryMenu({ history }: { history: NonNullable<Props['history']> }) {
     }
   }, [open])
   return (
-    <div className="backlog-chat-history-menu" ref={root}>
+    <div
+      className="backlog-chat-history-menu"
+      ref={root}
+      onBlur={(e) => {
+        if (open && e.relatedTarget && !e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false)
+      }}
+    >
       <button type="button" className="backlog-chat-new" onClick={() => { setOpen(false); history.onNew() }}>
         {t.backlogChat.newConversation}
       </button>
@@ -589,12 +603,14 @@ function HistoryMenu({ history }: { history: NonNullable<Props['history']> }) {
         ref={trigger}
         className="backlog-chat-history-trigger"
         aria-expanded={open}
+        aria-haspopup="true"
+        aria-controls={menuId}
         onClick={() => setOpen((o) => !o)}
       >
         {t.backlogChat.conversationsTitle} ({history.conversations.length})
       </button>
       {open && (
-        <div className="backlog-chat-history-popover">
+        <div className="backlog-chat-history-popover" id={menuId}>
           <ConversationList
             conversations={history.conversations}
             activeId={history.activeId}

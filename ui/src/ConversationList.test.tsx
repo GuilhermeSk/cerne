@@ -46,7 +46,6 @@ describe('ConversationList (F-0219)', () => {
         conversations={[conv('a', 'Conversa A', 1000), conv('b', 'Conversa B', 2000)]}
         activeId="b"
         onSelect={onSelect}
-       
         onDelete={vi.fn()} onRename={vi.fn()}
       />,
     )
