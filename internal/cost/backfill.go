@@ -183,7 +183,7 @@ func BackfillRoles(in Inputs, since time.Time) (Backfill, error) {
 		ents := slices.Sorted(maps.Keys(g.entities))
 		ar := AgentRole{Session: k.sess, Agent: k.agent, Role: g.class, Bound: g.bound}
 		reason, listed := reasonBinding, ents
-		if len(ents) == 1 && !g.bound && domain.IsFeatureID(ents[0]) {
+		if len(ents) == 1 && !g.bound && (strings.HasPrefix(ents[0], "F-") || strings.HasPrefix(ents[0], "T-")) {
 			all := cites[bindKey{k.sess, ents[0]}]
 			switch {
 			case len(g.cited) > 0 && !slices.Contains(g.cited, ents[0]):

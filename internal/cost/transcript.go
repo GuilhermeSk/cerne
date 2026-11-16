@@ -220,7 +220,7 @@ func readSession(sess string, files []tfile) ([]msg, error) {
 		}
 		if subagent {
 			class := scan.classifyRole(kind)
-			cited := scan.cited
+			cited := scan.citedIDs()
 			for i := first; i < len(msgs); i++ {
 				if msgs[i].file == f.rel {
 					msgs[i].class, msgs[i].cited = class, cited

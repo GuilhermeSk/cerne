@@ -29,7 +29,10 @@ var (
 	askedB = regexp.MustCompile("(?:VEREDITO|VERDICT):[ \\t]*[*_`]*B(?:[^|\\w]|$)")
 
 	// idRe is a feature or task id cited in prose (F-0411).
-	idRe = regexp.MustCompile(`\b[FT]-\d{4}\b`)
+	// fenceBlockRe is a ``` block, to its end when never closed: a diff or
+	// bundle the prompt embeds names features that are no citation.
+	fenceBlockRe = regexp.MustCompile("(?s)```.*?(?:```|$)")
+	idRe         = regexp.MustCompile(`\b[FT]-\d{4}\b`)
 
 	userKey = []byte(`"type":"user"`)
 	textKey = []byte(`"type":"text"`)
@@ -58,12 +61,11 @@ func (s *roleScan) feed(line []byte) {
 		if json.Unmarshal(line, &l) != nil {
 			return
 		}
-		defer func() { slices.Sort(s.cited); s.cited = slices.Compact(s.cited) }()
 		for _, b := range blockTexts(l.Message.Content, !first) {
 			s.fenced = s.fenced || fenceRe.MatchString(b) && critRe.MatchString(b)
 			s.asked = s.asked || first && askedA.MatchString(b) && askedB.MatchString(b)
 			if first {
-				s.cited = append(s.cited, idRe.FindAllString(b, -1)...)
+				s.cited = append(s.cited, idRe.FindAllString(fenceBlockRe.ReplaceAllString(b, ""), -1)...)
 			}
 		}
 	case bytes.Contains(line, assistantKey) && bytes.Contains(line, textKey):
@@ -119,4 +121,10 @@ func blockTexts(raw json.RawMessage, results bool) []string {
 		}
 	}
 	return out
+}
+
+// citedIDs is the ids the first message cites, sorted, once each.
+func (s *roleScan) citedIDs() []string {
+	slices.Sort(s.cited)
+	return slices.Compact(s.cited)
 }
