@@ -2,6 +2,8 @@ package hooks
 
 import (
 	"bytes"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,4 +172,22 @@ func callsCerne(body, invocation string) bool {
 		}
 	}
 	return false
+}
+
+// Stale names the managed scripts that are missing or differ from the embed
+// (F-0405). Read-only; same verdict as ScriptState, except an unreadable
+// script is unknown and not listed.
+func Stale(projDir string) []string {
+	var out []string
+	for _, a := range Assets() {
+		if ScriptState(projDir, a.Script) == FileOK {
+			continue
+		}
+		// A read error other than not-exist is unknown, not stale.
+		if _, err := os.ReadFile(filepath.Join(projDir, ".claude", "hooks", a.Script)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		out = append(out, a.Script)
+	}
+	return out
 }

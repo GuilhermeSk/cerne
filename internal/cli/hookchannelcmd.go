@@ -7,12 +7,15 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/hooks"
 	"github.com/henriquesakata/cerne/internal/project"
+	"github.com/henriquesakata/cerne/internal/skills"
 )
 
 // Channel contact-point plumbing (F-0325), run by the SessionStart and
@@ -79,11 +82,35 @@ func runHookChannel(cmd *cobra.Command, point string) {
 	} else if point != "subagent" {
 		return
 	}
-	cfg, _, err := project.LoadConfig(in.CWD)
+	cfg, projDir, err := project.LoadConfig(in.CWD)
 	if err != nil {
 		return
 	}
+	if consume {
+		fmt.Fprint(cmd.OutOrStdout(), staleManagedNotice(projDir, cfg.SyncSkills))
+	}
 	fmt.Fprint(cmd.OutOrStdout(), channelBlock(cfg.ProjectID, in.SessionID, consume))
+}
+
+// staleManagedNotice is the session-start check of the managed assets the
+// binary embeds (F-0405): a stale canonical skill is rewritten when the project
+// opted into sync_skills and only flagged otherwise; stale hook scripts are
+// only flagged — they may be versioned in the project's git. Local, no network,
+// "" when everything matches or on any error (fail-open, N-0021).
+func staleManagedNotice(projDir string, syncSkills bool) string {
+	var b strings.Builder
+	if names := skills.Stale(projDir); len(names) > 0 {
+		list := strings.Join(names, ", ")
+		if !syncSkills {
+			fmt.Fprintf(&b, "cerne: canonical skill(s) out of date with this cerne build: %s — run `cerne skill install`.\n", list)
+		} else if _, err := skills.Install(projDir); err == nil {
+			fmt.Fprintf(&b, "cerne: updated canonical skill(s) from this cerne build: %s — the new version applies from the next session (or after reloading skills).\n", list)
+		}
+	}
+	if n := len(hooks.Stale(projDir)); n > 0 {
+		fmt.Fprintf(&b, "cerne: %d managed hook(s) out of date with this cerne build — run `cerne hook install` and review the diff.\n", n)
+	}
+	return b.String()
 }
 
 // channelBlock is session sess's pending channel block for the project, ""

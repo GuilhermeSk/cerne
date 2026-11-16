@@ -68,3 +68,44 @@ func TestGitHookStates(t *testing.T) {
 		}
 	}
 }
+
+// TestStale (F-0405): Stale lists the managed scripts missing or diverging from
+// the embed — the same verdict ScriptState gives the harness — and never writes.
+func TestStale(t *testing.T) {
+	proj := t.TempDir()
+	if got := Stale(proj); len(got) != len(Assets()) {
+		t.Fatalf("empty project: Stale = %v, want every script", got)
+	}
+	if _, err := Install(proj); err != nil {
+		t.Fatal(err)
+	}
+	if got := Stale(proj); len(got) != 0 {
+		t.Fatalf("fresh install: Stale = %v", got)
+	}
+	script := Assets()[1].Script
+	path := filepath.Join(proj, ".claude", "hooks", script)
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n# local\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := Stale(proj); len(got) != 1 || got[0] != script {
+		t.Fatalf("diverging script: Stale = %v", got)
+	}
+	if raw, _ := os.ReadFile(path); string(raw) != "#!/bin/sh\n# local\n" {
+		t.Fatal("Stale rewrote the script")
+	}
+}
+
+func TestStaleUnreadableIsNotStale(t *testing.T) {
+	proj := t.TempDir()
+	if _, err := Install(proj); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(proj, ".claude", "hooks", Assets()[1].Script)
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(path, 0o755)
+	if got := Stale(proj); len(got) != 0 {
+		t.Fatalf("unreadable script: Stale = %v, want none", got)
+	}
+}

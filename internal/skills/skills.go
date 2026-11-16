@@ -6,6 +6,8 @@ package skills
 import (
 	"bytes"
 	"embed"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -186,4 +188,36 @@ func writeSkill(dst, content string) (Status, error) {
 		return "", err
 	}
 	return StatusCreated, nil
+}
+
+// Stale names the canonical skills whose SKILL.md or reference files are
+// missing or differ from the embed under <projDir>/.claude/skills (F-0405). It
+// only reads: the one comparison shared by the harness and the session start.
+func Stale(projDir string) []string {
+	var out []string
+	for _, s := range All() {
+		dir := filepath.Join(projDir, ".claude", "skills", s.Name)
+		if !sameFile(filepath.Join(projDir, ".claude", "skills", filepath.FromSlash(s.RelPath)), s.Content) {
+			out = append(out, s.Name)
+			continue
+		}
+		for _, r := range s.References {
+			if !sameFile(filepath.Join(dir, filepath.FromSlash(r.RelPath)), r.Content) {
+				out = append(out, s.Name)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// sameFile reports whether path holds content. A read error other than
+// not-exist leaves the verdict unknown, which counts as current: the check
+// must never flag (or rewrite) what it cannot read.
+func sameFile(path, content string) bool {
+	disk, err := os.ReadFile(path)
+	if err != nil {
+		return !errors.Is(err, fs.ErrNotExist)
+	}
+	return bytes.Equal(disk, []byte(content))
 }

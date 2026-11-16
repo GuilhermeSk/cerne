@@ -1,7 +1,6 @@
 package harness
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,6 +22,10 @@ func skillItems(opts Options, ls layerSet) []Item {
 	var items []Item
 	skillsDir := filepath.Join(opts.ProjDir, ".claude", "skills")
 
+	stale := map[string]bool{}
+	for _, n := range skills.Stale(opts.ProjDir) {
+		stale[n] = true
+	}
 	canonical := map[string]bool{}
 	for _, s := range skills.All() {
 		canonical[s.Name] = true
@@ -32,13 +35,12 @@ func skillItems(opts Options, ls layerSet) []Item {
 			Path:   filepath.Join(".claude", "skills", filepath.FromSlash(s.RelPath)),
 			Origin: OriginLocal,
 		}
-		disk, err := os.ReadFile(filepath.Join(skillsDir, filepath.FromSlash(s.RelPath)))
 		switch {
-		case err != nil:
+		case !stale[s.Name]:
+			it.State = StateOK
+		case !fileExists(filepath.Join(skillsDir, filepath.FromSlash(s.RelPath))):
 			it.State = StateMissing
 			it.Fix = fixSkillInstall
-		case bytes.Equal(disk, []byte(s.Content)):
-			it.State = StateOK
 		default:
 			it.State = StateDivergent
 			it.Detail = "differs from the canonical skill of this cerne build"
@@ -144,4 +146,9 @@ func skillItems(opts Options, ls layerSet) []Item {
 	}
 
 	return items
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

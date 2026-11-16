@@ -127,3 +127,25 @@ func TestThirdPartyProjectSkillUnmanaged(t *testing.T) {
 		t.Errorf("third-party project skill = %s fix=%q, want unmanaged, no fix", it.State, it.Fix)
 	}
 }
+
+// TestCanonicalSkillHarnessMatchesStale (F-0405 crit. 7): the harness and the
+// session start share skills.Stale — a diverging reference file is divergent
+// in the harness exactly when Stale lists the skill.
+func TestCanonicalSkillHarnessMatchesStale(t *testing.T) {
+	proj := t.TempDir()
+	if _, err := skills.Install(proj); err != nil {
+		t.Fatal(err)
+	}
+	ref := filepath.Join(proj, ".claude", "skills", "cerne-authoring", filepath.FromSlash(skills.All()[0].References[0].RelPath))
+	if err := os.WriteFile(ref, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inv := Inspect(Options{ProjDir: proj})
+	it, _ := findItem(inv, "skills", "cerne-authoring")
+	if it.State != StateDivergent {
+		t.Errorf("stale reference: harness state = %s, want divergent", it.State)
+	}
+	if got := skills.Stale(proj); len(got) != 1 || got[0] != "cerne-authoring" {
+		t.Errorf("Stale = %v", got)
+	}
+}
