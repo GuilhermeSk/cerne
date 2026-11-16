@@ -458,7 +458,7 @@ func BoardData(works []store.Work, events []domain.Event, handoffs []store.Hando
 // there is no active work nor pending handoff.
 func RenderBoard(works []store.Work, events []domain.Event, handoffs []store.Handoff, now time.Time, recentDays int) (string, error) {
 	data := BoardData(works, events, handoffs, now, recentDays)
-	tmpl, err := template.New("board").Parse(boardTemplate + `{{template "board" .}}`)
+	tmpl, err := template.New("session").Parse(boardTemplate + `{{template "board" .}}`)
 	if err != nil {
 		return "", err
 	}

@@ -2,11 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"github.com/henriquesakata/cerne/internal/materialize"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/henriquesakata/cerne/internal/hooks"
 	"github.com/henriquesakata/cerne/internal/project"
@@ -61,6 +64,7 @@ func TestHookChannelExportsSession(t *testing.T) {
 // session's pending channel block as plain text (the script's stdout is plain
 // text — JSON would break it), then nothing; a corrupt channel is silence.
 func TestHookChannelSessionStart(t *testing.T) {
+	boardOff(t)
 	projDir, _, repoDir := setupProject(t)
 	t.Setenv("CLAUDE_ENV_FILE", "")
 	startBoundWork(t, projDir, repoDir, "sess-a", "Mexer no servidor")
@@ -114,6 +118,7 @@ func TestHookSessionContextIncludesChannel(t *testing.T) {
 // session id and a context that will be thrown away, so it gets a peek — it
 // records what it was shown but never moves the parent's watermark.
 func TestHookChannelSubagentPeek(t *testing.T) {
+	boardOff(t)
 	projDir, _, repoDir := setupProject(t)
 	t.Setenv("CLAUDE_ENV_FILE", "")
 	startBoundWork(t, projDir, repoDir, "sess-a", "Mexer no servidor")
@@ -230,7 +235,24 @@ func TestHookEnvelopeEscapesControlChars(t *testing.T) {
 func sessionStart(t *testing.T, projDir string) string {
 	t.Helper()
 	t.Setenv("CLAUDE_ENV_FILE", "")
-	out, err := execCerneStdin(t, sessionStartJSON(t, "sess-f0405", projDir), "hook", "channel", "--point", "session-start")
+	boardOff(t)
+	return sessionStartBoard(t, projDir)
+}
+
+// boardOff makes the session-start board load fail, so tests of the other
+// session-start output see zero bytes of board.
+func boardOff(t *testing.T) {
+	t.Helper()
+	old := loadBoard
+	loadBoard = func(string, int, time.Time) (string, error) { return "", errors.New("board off") }
+	t.Cleanup(func() { loadBoard = old })
+}
+
+// sessionStartBoard is sessionStart with the real board loader.
+func sessionStartBoard(t *testing.T, projDir string) string {
+	t.Helper()
+	t.Setenv("CLAUDE_ENV_FILE", "")
+	out, err := execCerneStdin(t, sessionStartJSON(t, "sess-f0409", projDir), "hook", "channel", "--point", "session-start")
 	if err != nil {
 		t.Fatalf("hook channel: %v\n%s", err, out)
 	}
@@ -377,5 +399,74 @@ func TestHookChannelSessionStartUnreadableIsUnknown(t *testing.T) {
 			t.Fatalf("sync_skills=%v: unreadable skill must be silent, got %q", on, out)
 		}
 		os.Chmod(skill, 0o644)
+	}
+}
+
+// boardSection cuts the "In progress" and "Pending handoffs" sections out of a
+// generated CONTEXT.md.
+func boardSection(t *testing.T, ctx string) string {
+	t.Helper()
+	a, b := strings.Index(ctx, "## In progress"), strings.Index(ctx, "## Features")
+	if a < 0 || b < a {
+		t.Fatalf("no board in CONTEXT.md:\n%s", ctx)
+	}
+	return ctx[a:b]
+}
+
+// TestHookChannelSessionStartBoard (F-0409 crit. 1): session start prints the
+// board read from the clone, equal to the CONTEXT.md sections generated from
+// the same clone.
+func TestHookChannelSessionStartBoard(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	if out, err := execCerne(t, "work", "start", "Mexer no servidor", "--dir", projDir); err != nil {
+		t.Fatalf("work start: %v\n%s", err, out)
+	}
+	docs := filepath.Join(t.TempDir(), ".docs")
+	if _, err := materialize.MaterializeAt(repoDir, docs, "", false, 14, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := os.ReadFile(filepath.Join(docs, "CONTEXT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.TrimSpace(boardSection(t, string(ctx)))
+	out := sessionStartBoard(t, projDir)
+	if !strings.Contains(out, "Mexer no servidor") || !strings.HasPrefix(out, want) {
+		t.Fatalf("board differs from CONTEXT.md section\nwant prefix:\n%s\ngot:\n%s", want, out)
+	}
+}
+
+// F-0409 crit. 4: no active work is one line, not silence.
+func TestHookChannelSessionStartBoardEmpty(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	if out := sessionStartBoard(t, projDir); out != "- no active work\n" {
+		t.Fatalf("got %q", out)
+	}
+}
+
+// F-0409 crit. 3: a failing or stalled load prints no board and exits 0.
+func TestHookChannelSessionStartBoardFailOpen(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	old, oldD := loadBoard, boardDeadline
+	t.Cleanup(func() { loadBoard, boardDeadline = old, oldD })
+	loadBoard = func(string, int, time.Time) (string, error) { return "", errors.New("boom") }
+	if out := sessionStartBoard(t, projDir); out != "" {
+		t.Fatalf("error must print no board, got %q", out)
+	}
+	boardDeadline = 50 * time.Millisecond
+	loadBoard = func(string, int, time.Time) (string, error) { time.Sleep(2 * time.Second); return "late\n", nil }
+	start := time.Now()
+	if out := sessionStartBoard(t, projDir); out != "" || time.Since(start) > time.Second {
+		t.Fatalf("stalled load: out %q after %v", out, time.Since(start))
+	}
+}
+
+// F-0409 crit. 6: the subagent point prints no board.
+func TestHookChannelSubagentNoBoard(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	t.Setenv("CLAUDE_ENV_FILE", "")
+	out, err := execCerneStdin(t, sessionStartJSON(t, "sess-sub", projDir), "hook", "channel", "--point", "subagent")
+	if err != nil || out != "" {
+		t.Fatalf("subagent: %v %q", err, out)
 	}
 }
