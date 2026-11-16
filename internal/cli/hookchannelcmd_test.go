@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/henriquesakata/cerne/internal/hooks"
+	"github.com/henriquesakata/cerne/internal/project"
 	"github.com/henriquesakata/cerne/internal/room"
 )
 
@@ -221,5 +223,85 @@ func TestHookEnvelopeEscapesControlChars(t *testing.T) {
 		if b < 0x20 {
 			t.Fatalf("raw control byte %#x in the JSON:\n%q", b, out)
 		}
+	}
+}
+
+func sessionStart(t *testing.T, projDir string) string {
+	t.Helper()
+	t.Setenv("CLAUDE_ENV_FILE", "")
+	out, err := execCerneStdin(t, sessionStartJSON(t, "sess-f0405", projDir), "hook", "channel", "--point", "session-start")
+	if err != nil {
+		t.Fatalf("hook channel: %v\n%s", err, out)
+	}
+	return out
+}
+
+func setSyncSkills(t *testing.T, projDir string, on bool) {
+	t.Helper()
+	cfg, _, err := project.LoadConfig(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.SyncSkills = on
+	if err := project.SaveConfig(projDir, cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestHookChannelSessionStartStaleSkills (F-0405 crit. 2, 3, 6): a stale
+// canonical skill is rewritten with a one-line note when sync_skills is on,
+// only flagged (nothing written) when it is off, and an up-to-date project
+// prints nothing.
+func TestHookChannelSessionStartStaleSkills(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	if out := sessionStart(t, projDir); out != "" {
+		t.Fatalf("everything current must print nothing, got %q", out)
+	}
+	stale := filepath.Join(projDir, ".claude", "skills", "cerne-self-learning", "SKILL.md")
+	if err := os.WriteFile(stale, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := sessionStart(t, projDir)
+	if !strings.Contains(out, "cerne skill install") || strings.Contains(out, "\n\n") {
+		t.Fatalf("without sync_skills want one warning line naming the fix, got %q", out)
+	}
+	if raw, _ := os.ReadFile(stale); string(raw) != "old" {
+		t.Fatal("warning mode must not write")
+	}
+
+	setSyncSkills(t, projDir, true)
+	out = sessionStart(t, projDir)
+	if !strings.Contains(out, "cerne-self-learning") || !strings.Contains(out, "next session") {
+		t.Fatalf("with sync_skills want an updated note, got %q", out)
+	}
+	if raw, _ := os.ReadFile(stale); string(raw) == "old" {
+		t.Fatal("sync_skills must rewrite the skill")
+	}
+	if out := sessionStart(t, projDir); out != "" {
+		t.Fatalf("second start must be silent, got %q", out)
+	}
+}
+
+// TestHookChannelSessionStartStaleHooks (F-0405 crit. 4): a diverging managed
+// hook only produces a counted warning line; the file stays untouched. The
+// subagent point does not run the check.
+func TestHookChannelSessionStartStaleHooks(t *testing.T) {
+	projDir, _, _ := setupProject(t)
+	setSyncSkills(t, projDir, true)
+	script := filepath.Join(projDir, ".claude", "hooks", hooks.Assets()[1].Script)
+	if err := os.WriteFile(script, []byte("#!/bin/sh\n# local\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := sessionStart(t, projDir)
+	if !strings.Contains(out, "1 managed hook") || !strings.Contains(out, "cerne hook install") {
+		t.Fatalf("want a counted hook warning, got %q", out)
+	}
+	if raw, _ := os.ReadFile(script); string(raw) != "#!/bin/sh\n# local\n" {
+		t.Fatal("the hook script was rewritten at session start")
+	}
+	sub, err := execCerneStdin(t, sessionStartJSON(t, "s", projDir), "hook", "channel", "--point", "subagent")
+	if err != nil || sub != "" {
+		t.Fatalf("subagent point: %v %q, want silence", err, sub)
 	}
 }
