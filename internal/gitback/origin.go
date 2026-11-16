@@ -18,7 +18,7 @@ var ErrForeignClone = errors.New("cache clone belongs to another backend")
 // one clone; the clone is never touched here (the cache dir also holds rooms
 // and messages), the caller just stops.
 func CheckOrigin(repoDir, backend string) error {
-	origin, err := gitRun(repoDir, "config", "--get", "remote.origin.url")
+	origin, err := OriginURL(repoDir)
 	if err != nil {
 		return fmt.Errorf("reading the origin of %s: %w", repoDir, err)
 	}
