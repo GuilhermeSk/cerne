@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/henriquesakata/cerne/internal/gitback"
@@ -17,13 +18,23 @@ var now = time.Now
 const indexStaleAfter = 24 * time.Hour
 
 // indexSyncedAt reads when the index was last synced, nil when unknown. A read
-// failure counts as unknown: search must not fail over a missing note.
-func indexSyncedAt(dbPath string) *time.Time {
+// failure counts as unknown: search must not fail over a missing note. An index
+// with no recorded time falls back to the clone's last fetch (F-0408), when
+// that fetch is not newer than the index file: a newer fetch may hold entities
+// the index never saw. Nothing is written back.
+func indexSyncedAt(dbPath, repoDir string) *time.Time {
 	t, ok, err := index.SyncedAt(dbPath)
-	if err != nil || !ok {
+	if err != nil {
 		return nil
 	}
-	return &t
+	if ok {
+		return &t
+	}
+	fetched, ok := gitback.FetchedAt(repoDir)
+	if fi, serr := os.Stat(dbPath); !ok || serr != nil || fetched.After(fi.ModTime()) {
+		return nil
+	}
+	return &fetched
 }
 
 // noteIndexAge prints, on stderr and before any result, that the index may

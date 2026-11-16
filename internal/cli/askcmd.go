@@ -79,7 +79,7 @@ func runAsk(cmd *cobra.Command, dir, query string, opts askOpts) error {
 	} else if err != nil {
 		return err
 	}
-	synced := indexSyncedAt(dbPath)
+	synced := indexSyncedAt(dbPath, ctx.repoDir)
 	if !opts.asJSON {
 		noteIndexAge(cmd.ErrOrStderr(), ctx.cfg.Backend, synced)
 	}

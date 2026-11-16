@@ -78,7 +78,7 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc 
 		return err
 	}
 
-	synced := indexSyncedAt(dbPath)
+	synced := indexSyncedAt(dbPath, ctx.repoDir)
 	if !asJSON {
 		noteIndexAge(cmd.ErrOrStderr(), ctx.cfg.Backend, synced)
 	}
