@@ -91,13 +91,23 @@ func (s *MultiServer) mux() http.Handler {
 			// The clone is created once, at register time; without this the
 			// served docs stay pinned to that day's SHA forever (client project F-0517).
 			// Throttled to one fetch per TTL per clone.
-			// F-0434: the registered backend is the one docs.lock pins; a clone
-			// whose origin is another backend is never served.
-			if lock, err := project.LoadLock(projDir); err == nil && lock.Backend != "" {
-				if err := gitback.CheckOrigin(repoDir, lock.Backend); err != nil {
-					writeJSON(w, http.StatusConflict, errorBody(err.Error()))
-					return
-				}
+			// F-0434: the registered backend is the one docs.lock pins, else the
+			// CERNE_SERVE_PROJECTS one; with neither there is nothing to compare
+			// the clone against, so it is not served.
+			backend := ""
+			if lock, err := project.LoadLock(projDir); err == nil {
+				backend = lock.Backend
+			}
+			if backend == "" {
+				backend = configuredBackends()[pid]
+			}
+			if backend == "" {
+				writeJSON(w, http.StatusConflict, errorBody("cannot verify the backend of project "+pid+": docs.lock is unreadable or empty and no backend is configured; register it again"))
+				return
+			}
+			if err := gitback.CheckOrigin(repoDir, backend); err != nil {
+				writeJSON(w, http.StatusConflict, errorBody(err.Error()))
+				return
 			}
 			refreshProject(repoDir)
 			h(w, r, repoDir, projDir, pid)

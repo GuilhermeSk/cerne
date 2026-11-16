@@ -253,13 +253,16 @@ func runHookBindWork(cmd *cobra.Command, format string) {
 	if in.SessionID == "" {
 		return
 	}
-	cfg, _, err := project.LoadConfig(in.CWD)
+	cfg, projDir, err := project.LoadConfig(in.CWD)
 	if err != nil {
 		return
 	}
 	cacheDir, err := project.CacheDir(cfg.ProjectID)
 	if err != nil {
 		return
+	}
+	if _, err := guardedRepoDir(cacheDir, cfg, projDir); err != nil {
+		return // F-0434: fail open, never through a foreign clone
 	}
 	// F-0361: every Bash call is a sign of life for the session's binding.
 	_ = app.TouchBinding(cacheDir, in.SessionID, in.AgentID)
@@ -391,7 +394,10 @@ func runHookWorkGate(cmd *cobra.Command, format string) {
 	if err != nil {
 		return
 	}
-	repoDir := filepath.Join(cacheDir, "repo")
+	repoDir, err := guardedRepoDir(cacheDir, cfg, projDir)
+	if err != nil {
+		return // F-0434
+	}
 	_ = app.TouchBinding(cacheDir, in.SessionID, in.AgentID) // F-0361: sign of life
 	var ti struct {
 		FilePath string `json:"file_path"`

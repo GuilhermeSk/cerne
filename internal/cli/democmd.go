@@ -279,7 +279,10 @@ func runDemo(w io.Writer, dest string) (err error) {
 
 	// Read before the cache dir is redirected below: the id must be free in the
 	// cache the user's own shell will use for this project afterwards (F-0434).
-	projectID := demoProjectID(filepath.Join(abs, "taskflow-docs.git"))
+	projectID, err := demoProjectID(filepath.Join(abs, "taskflow-docs.git"))
+	if err != nil {
+		return err
+	}
 
 	// Every user-level dir a step writes through points inside <dir> while
 	// building, so nothing reaches your real projects; CERNE_ROOT must not
@@ -392,19 +395,23 @@ cd "%[1]s" && cerne ui
 }
 
 // demoProjectID is "taskflow", or "taskflow-2", "taskflow-3"... when the user's
-// cache already holds a clone of another backend under that id: the cache is
-// keyed by project id alone, and cerne refuses a project over a foreign clone
-// (F-0434).
-func demoProjectID(backend string) string {
+// cache already holds anything under that id that is not a clone of backend:
+// the cache is keyed by project id alone, and cerne refuses a project over a
+// foreign clone (F-0434). ponytail: check-then-use; a demo started in parallel
+// can still take the same free id in the window before its first cache write.
+func demoProjectID(backend string) (string, error) {
 	id := "taskflow"
 	for n := 2; ; n++ {
 		cache, err := project.CacheDir(id)
 		if err != nil {
-			return id
+			return "", err
+		}
+		if _, err := os.Stat(cache); err != nil {
+			return id, nil
 		}
 		repo := filepath.Join(cache, "repo")
-		if _, err := os.Stat(filepath.Join(repo, ".git")); err != nil || gitback.CheckOrigin(repo, backend) == nil {
-			return id
+		if _, err := os.Stat(filepath.Join(repo, ".git")); err == nil && gitback.CheckOrigin(repo, backend) == nil {
+			return id, nil
 		}
 		id = fmt.Sprintf("taskflow-%d", n)
 	}

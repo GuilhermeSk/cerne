@@ -111,9 +111,7 @@ func resolvePaths(startDir string) (projCtx, error) {
 		}
 	} else if err != nil {
 		return projCtx{}, err
-	} else if err := gitback.CheckOrigin(repoDir, cfg.Backend); err != nil {
-		// F-0434: the cache is keyed by project_id alone; never read or write
-		// through a clone of another backend.
+	} else if _, err := guardedRepoDir(cacheDir, cfg, projDir); err != nil {
 		return projCtx{}, err
 	}
 	return projCtx{cfg: cfg, projDir: projDir, repoDir: repoDir}, nil
@@ -206,4 +204,32 @@ func updateLockSnapshot(projDir, sha string) error {
 	}
 	lock.Snapshot = sha
 	return project.SaveLock(projDir, lock)
+}
+
+// guardedRepoDir is the backend clone's directory under cacheDir, refused with
+// gitback.ErrForeignClone when an existing clone has another origin than the
+// project's backend (F-0434): the cache is keyed by project_id alone, so every
+// reader or writer of the clone goes through here. A relative backend is
+// relative to the .cernerc directory, never the process cwd.
+func guardedRepoDir(cacheDir string, cfg project.Config, projDir string) (string, error) {
+	repoDir := filepath.Join(cacheDir, "repo")
+	if _, err := os.Stat(filepath.Join(repoDir, ".git")); err != nil {
+		return repoDir, nil // no clone yet: whoever creates it clones cfg.Backend
+	}
+	backend := cfg.Backend
+	if gitback.IsLocalPath(backend) && !filepath.IsAbs(backend) && !strings.HasPrefix(backend, "~") {
+		backend = filepath.Join(projDir, backend)
+	}
+	return repoDir, gitback.CheckOrigin(repoDir, backend)
+}
+
+// cloneIsOurs reports whether the project's cache clone (if any) is of its own
+// backend; the hooks that list clone data skip it otherwise (fail open).
+func cloneIsOurs(cfg project.Config, projDir string) bool {
+	cacheDir, err := project.CacheDir(cfg.ProjectID)
+	if err != nil {
+		return false
+	}
+	_, err = guardedRepoDir(cacheDir, cfg, projDir)
+	return err == nil
 }

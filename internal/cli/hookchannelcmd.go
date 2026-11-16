@@ -158,6 +158,11 @@ func runHookChannel(cmd *cobra.Command, point string) {
 	}
 	if consume {
 		fmt.Fprint(cmd.OutOrStdout(), staleManagedNotice(projDir, cfg.SyncSkills))
+	}
+	if !cloneIsOurs(cfg, projDir) { // F-0434
+		return
+	}
+	if consume {
 		fmt.Fprint(cmd.OutOrStdout(), sessionBoard(cfg.ProjectID, cfg.RecentWorkWindowDays()))
 	}
 	fmt.Fprint(cmd.OutOrStdout(), channelBlock(cfg.ProjectID, in.SessionID, consume))

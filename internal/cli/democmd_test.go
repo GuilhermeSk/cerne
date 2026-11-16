@@ -336,4 +336,26 @@ func TestDemo_AvoidsCollidingProjectID(t *testing.T) {
 	if got := bareHead(t, other); got != headBefore {
 		t.Errorf("the other backend moved: %s -> %s", headBefore, got)
 	}
+	// The user's own shell (the cache dir the demo restored) must work.
+	abs, _ := filepath.Abs("cerne-demo")
+	t.Setenv("CERNE_ROOT", "")
+	t.Chdir(filepath.Join(abs, "taskflow"))
+	if out, err := execCerne(t, "brief"); err != nil || !strings.Contains(out, "F-0001") {
+		t.Errorf("brief from the user shell: %v\n%s", err, out)
+	}
+	if got := bareHead(t, other); got != headBefore {
+		t.Errorf("the other backend moved after brief: %s -> %s", headBefore, got)
+	}
+}
+
+// A leftover cache dir without a clone also takes the id.
+func TestDemoProjectID_LeftoverDirIsTaken(t *testing.T) {
+	t.Setenv("CERNE_CACHE_DIR", t.TempDir())
+	cache, _ := project.CacheDir("taskflow")
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if id, err := demoProjectID(filepath.Join(t.TempDir(), "b.git")); err != nil || id != "taskflow-2" {
+		t.Fatalf("id = %q, %v; want taskflow-2", id, err)
+	}
 }

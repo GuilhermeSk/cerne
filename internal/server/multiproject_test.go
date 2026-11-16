@@ -252,6 +252,9 @@ func TestServer_RefusesForeignClone(t *testing.T) {
 	if rec := doMP(t, h, http.MethodPut, "/api/projects/proj-x", regBody(t, originB), mpSecret, nil); rec.Code != http.StatusConflict {
 		t.Fatalf("register B over A's clone: status %d, want 409; body %s", rec.Code, rec.Body.String())
 	}
+	if o, err := gitback.OriginURL(mustRepo(t, "proj-x")); err != nil || o != originA {
+		t.Fatalf("the clone origin changed after the refused register: %q, %v", o, err)
+	}
 	// The registered backend (docs.lock) moved to B while the clone is A's.
 	_, projDir, _ := projectPaths("proj-x")
 	if err := project.SaveLock(projDir, project.Lock{Version: 1, Backend: originB}); err != nil {
@@ -263,5 +266,36 @@ func TestServer_RefusesForeignClone(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "Projeto A") {
 		t.Fatalf("response leaks the other backend's data: %s", rec.Body.String())
+	}
+}
+
+func mustRepo(t *testing.T, pid string) string {
+	t.Helper()
+	repoDir, _, err := projectPaths(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repoDir
+}
+
+// An unreadable or empty docs.lock must not switch the check off (F-0434).
+func TestServer_UnverifiableBackendIsRefused(t *testing.T) {
+	t.Setenv("CERNE_CACHE_DIR", t.TempDir())
+	h := NewMultiProject(mpSecret)
+	origin := seedBareBackend(t, "Projeto A")
+	if rec := doMP(t, h, http.MethodPut, "/api/projects/proj-y", regBody(t, origin), mpSecret, nil); rec.Code != http.StatusOK {
+		t.Fatalf("register: %d", rec.Code)
+	}
+	_, projDir, _ := projectPaths("proj-y")
+	if err := project.SaveLock(projDir, project.Lock{Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	rec := doMP(t, h, http.MethodGet, "/api/projects/proj-y/state", "", mpSecret, nil)
+	if rec.Code != http.StatusConflict || strings.Contains(rec.Body.String(), "Projeto A") {
+		t.Fatalf("status %d body %s, want 409 without data", rec.Code, rec.Body.String())
+	}
+	t.Setenv("CERNE_SERVE_PROJECTS", "proj-y="+origin)
+	if rec := doMP(t, h, http.MethodGet, "/api/projects/proj-y/state", "", mpSecret, nil); rec.Code != http.StatusOK {
+		t.Fatalf("configured fallback: status %d %s", rec.Code, rec.Body.String())
 	}
 }

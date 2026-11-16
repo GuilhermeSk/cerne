@@ -62,7 +62,7 @@ func runHookPrecompact(cmd *cobra.Command) {
 // boundActiveWork resolves the session's live binding when it is an active
 // W-, from the project at dir — all local.
 func boundActiveWork(dir, sess string) (cacheDir, repoDir, workID string, ok bool) {
-	cfg, _, err := project.LoadConfig(dir)
+	cfg, projDir, err := project.LoadConfig(dir)
 	if err != nil {
 		return "", "", "", false
 	}
@@ -70,7 +70,10 @@ func boundActiveWork(dir, sess string) (cacheDir, repoDir, workID string, ok boo
 	if err != nil {
 		return "", "", "", false
 	}
-	repoDir = filepath.Join(cacheDir, "repo")
+	repoDir, err = guardedRepoDir(cacheDir, cfg, projDir)
+	if err != nil {
+		return "", "", "", false
+	}
 	id, live, err := app.CurrentBinding(cacheDir, repoDir, sess, "") // validates sess as a file name
 	if err != nil || !live || !strings.HasPrefix(id, "W-") {
 		return "", "", "", false

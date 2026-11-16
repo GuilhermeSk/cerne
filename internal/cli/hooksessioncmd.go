@@ -101,7 +101,7 @@ func runHookSessionContext(cmd *cobra.Command, format string) {
 		}
 		dir = wd
 	}
-	cfg, _, err := project.LoadConfig(dir)
+	cfg, projDir, err := project.LoadConfig(dir)
 	if err != nil {
 		return // not a cerne project: never inject
 	}
@@ -112,14 +112,21 @@ func runHookSessionContext(cmd *cobra.Command, format string) {
 		}
 	}
 
-	text := hooks.SessionRules(cfg.Gates.GauntletEnabled()) + "\n\nACTIVE WORK RIGHT NOW (cerne work list):\n" + activeWorkLines(cfg.ProjectID)
-	if in.Source == "compact" {
+	ours := cloneIsOurs(cfg, projDir) // F-0434: never list another backend's work
+	work := "- none"
+	if ours {
+		work = activeWorkLines(cfg.ProjectID)
+	}
+	text := hooks.SessionRules(cfg.Gates.GauntletEnabled()) + "\n\nACTIVE WORK RIGHT NOW (cerne work list):\n" + work
+	if in.Source == "compact" && ours {
 		if block := compactBlock(dir, in.SessionID); block != "" {
 			text += "\n\n" + block
 		}
 	}
-	if block := channelBlock(cfg.ProjectID, in.SessionID, true); block != "" {
-		text += "\n\n" + block
+	if ours {
+		if block := channelBlock(cfg.ProjectID, in.SessionID, true); block != "" {
+			text += "\n\n" + block
+		}
 	}
 
 	enc := json.NewEncoder(cmd.OutOrStdout())

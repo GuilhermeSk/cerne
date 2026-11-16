@@ -71,7 +71,10 @@ func runGuardCommitMsg(cmd *cobra.Command, msgPath string) error {
 	if err != nil {
 		return nil
 	}
-	repoDir := filepath.Join(cacheDir, "repo")
+	repoDir, err := guardedRepoDir(cacheDir, cfg, projDir)
+	if err != nil {
+		return nil // F-0434: fail open
+	}
 	if fi, err := os.Stat(repoDir); err != nil || !fi.IsDir() {
 		return nil
 	}

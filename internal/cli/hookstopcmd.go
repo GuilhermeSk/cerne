@@ -70,7 +70,7 @@ func runHookStopCheck(cmd *cobra.Command) {
 	if in.cursor() && in.Cursor.Status != "completed" {
 		return
 	}
-	cfg, _, err := project.LoadConfig(in.CWD)
+	cfg, projDir, err := project.LoadConfig(in.CWD)
 	if err != nil {
 		return
 	}
@@ -78,7 +78,10 @@ func runHookStopCheck(cmd *cobra.Command) {
 	if err != nil {
 		return
 	}
-	repoDir := filepath.Join(cacheDir, "repo")
+	repoDir, err := guardedRepoDir(cacheDir, cfg, projDir)
+	if err != nil {
+		return // F-0434
+	}
 	_ = app.TouchBinding(cacheDir, in.SessionID, "") // F-0361: sign of life, one stat + one chtimes, local
 
 	// F-0309: keep the session's live features' cost snapshot current, so a

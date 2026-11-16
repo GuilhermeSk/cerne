@@ -90,7 +90,11 @@ func orphanPushMessage(cwd string) string {
 	if err != nil {
 		return ""
 	}
-	refs, err := store.LoadAllReferences(filepath.Join(cacheDir, "repo"))
+	repoDir, err := guardedRepoDir(cacheDir, cfg, projDir)
+	if err != nil {
+		return ""
+	}
+	refs, err := store.LoadAllReferences(repoDir)
 	if err != nil {
 		return ""
 	}

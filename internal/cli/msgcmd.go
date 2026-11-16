@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -41,7 +40,7 @@ func newMsgCmd() *cobra.Command {
 // msgProject resolves the project's cache and backend clone dirs from
 // .cernerc alone (no pull), like the room commands.
 func msgProject(dir string) (cacheDir, repoDir string, err error) {
-	cfg, _, err := project.LoadConfig(dir)
+	cfg, projDir, err := project.LoadConfig(dir)
 	if err != nil {
 		return "", "", err
 	}
@@ -49,7 +48,8 @@ func msgProject(dir string) (cacheDir, repoDir string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	return cacheDir, filepath.Join(cacheDir, "repo"), nil
+	repoDir, err = guardedRepoDir(cacheDir, cfg, projDir)
+	return cacheDir, repoDir, err
 }
 
 func msgSession(flag string) string {
