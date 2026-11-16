@@ -11,6 +11,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/henriquesakata/cerne/internal/gitback"
+	"github.com/henriquesakata/cerne/internal/project"
 )
 
 // demoTools is a PATH dir holding git and nothing else — no sh (criterion 6).
@@ -303,5 +306,68 @@ func TestDemo_Refusals(t *testing.T) {
 	}
 	if _, err := runDemoCmd(t, filepath.Join(link, "demo")); !errors.Is(err, errDemoInsideProject) {
 		t.Errorf("symlinked parent into a project: err = %v, want errDemoInsideProject", err)
+	}
+}
+
+// TestDemo_AvoidsCollidingProjectID pins F-0434 criterion 4: a cache that
+// already holds a "taskflow" clone of another backend is left alone and the
+// demo takes "taskflow-2".
+func TestDemo_AvoidsCollidingProjectID(t *testing.T) {
+	demoEnv(t)
+	other := newOrigin(t)
+	headBefore := bareHead(t, other)
+	cache, err := project.CacheDir("taskflow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gitback.Clone(other, filepath.Join(cache, "repo")); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runDemoCmd(t, "cerne-demo"); err != nil {
+		t.Fatalf("cerne demo: %v\n%s", err, out)
+	}
+	cfg, _, err := project.LoadConfig(filepath.Join("cerne-demo", "taskflow"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ProjectID != "taskflow-2" {
+		t.Errorf("project_id = %q, want taskflow-2", cfg.ProjectID)
+	}
+	if got := bareHead(t, other); got != headBefore {
+		t.Errorf("the other backend moved: %s -> %s", headBefore, got)
+	}
+	// The user's own shell (the cache dir the demo restored) must work.
+	abs, _ := filepath.Abs("cerne-demo")
+	t.Setenv("CERNE_ROOT", "")
+	t.Chdir(filepath.Join(abs, "taskflow"))
+	if out, err := execCerne(t, "brief"); err != nil || !strings.Contains(out, "F-0001") {
+		t.Errorf("brief from the user shell: %v\n%s", err, out)
+	}
+	if got := bareHead(t, other); got != headBefore {
+		t.Errorf("the other backend moved after brief: %s -> %s", headBefore, got)
+	}
+}
+
+// A leftover cache dir without a clone also takes the id.
+func TestDemoProjectID_LeftoverDirIsTaken(t *testing.T) {
+	t.Setenv("CERNE_CACHE_DIR", t.TempDir())
+	cache, _ := project.CacheDir("taskflow")
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if id, err := demoProjectID(filepath.Join(t.TempDir(), "b.git")); err != nil || id != "taskflow-2" {
+		t.Fatalf("id = %q, %v; want taskflow-2", id, err)
+	}
+}
+
+// Only "does not exist" frees an id; any other stat error is returned.
+func TestDemoProjectID_StatErrorIsReturned(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "afile")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CERNE_CACHE_DIR", file) // the cache path runs through a file: ENOTDIR
+	if id, err := demoProjectID(filepath.Join(t.TempDir(), "b.git")); err == nil {
+		t.Fatalf("id = %q, want the stat error", id)
 	}
 }

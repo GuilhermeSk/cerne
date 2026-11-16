@@ -47,7 +47,7 @@ func runHookCommitTrailer(msgPath string) {
 	if cerneTrailerRe.Match(raw) {
 		return
 	}
-	cfg, _, err := project.LoadConfig(filepath.Dir(msgPath))
+	cfg, projDir, err := project.LoadConfig(filepath.Dir(msgPath))
 	if err != nil || !cfg.Gates.CommitTrailerEnabled() {
 		return
 	}
@@ -55,7 +55,11 @@ func runHookCommitTrailer(msgPath string) {
 	if err != nil {
 		return
 	}
-	ids, err := app.LiveBindings(cacheDir, filepath.Join(cacheDir, "repo"))
+	repoDir, err := guardedRepoDir(cacheDir, cfg, projDir)
+	if err != nil {
+		return
+	}
+	ids, err := app.LiveBindings(cacheDir, repoDir)
 	if err != nil || len(ids) != 1 {
 		return
 	}

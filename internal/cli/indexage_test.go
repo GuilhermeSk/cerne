@@ -40,7 +40,19 @@ func ageFixture(t *testing.T, age time.Duration, remote bool) (projDir string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(rc, []byte(strings.ReplaceAll(string(b), origin, "git@example.com:o/r.git")), 0o644); err != nil {
+		const fake = "git@example.com:o/r.git"
+		if err := os.WriteFile(rc, []byte(strings.ReplaceAll(string(b), origin, fake)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		// The clone's origin must be the declared backend (F-0434); insteadOf
+		// keeps the fetches going to the local bare.
+		cfg := filepath.Join(repoDir, ".git", "config")
+		raw, err := os.ReadFile(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw = []byte(strings.ReplaceAll(string(raw), origin, fake) + "[url \"" + origin + "\"]\n\tinsteadOf = " + fake + "\n")
+		if err := os.WriteFile(cfg, raw, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

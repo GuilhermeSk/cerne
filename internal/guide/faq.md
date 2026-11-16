@@ -1,3 +1,6 @@
+## Q: A command fails with "cache clone belongs to another backend". What now?
+Two projects on this machine share one `project_id`, and the local cache is keyed by that id alone, so the clone in the cache is the other project's. cerne refuses to read or write through it, and never deletes it (the cache also holds rooms and messages). Give this project its own cache with `CERNE_CACHE_DIR=<dir>`, or a distinct `project_id` in its `.cernerc`. `cerne demo` already picks `taskflow-2`, `taskflow-3`… when `taskflow` is taken.
+
 ## Q: Which command do I run first? I just installed cerne.
 Read the top-level help (run cerne with no arguments): the first section, "Start here", holds the on-ramp. `cerne init` sets up a project (or `cerne demo` creates a sample one to explore), `cerne ui` opens the dashboard, `cerne import` brings in an existing documentation tree, and `cerne guide "<what you want to do>"` answers any later question. The other sections group the rest by journey: read the state, author and move the work, sync with the backend, agents and coordination, administration.
 
