@@ -116,30 +116,17 @@ func TestRebuildZeroTimeUsesFetchHead(t *testing.T) {
 	}
 }
 
-func TestUpdateZeroTimeFillsMissingFromFetchHead(t *testing.T) {
+func TestUpdateZeroTimeNeverStampsFromFetchHead(t *testing.T) {
 	repoDir := seedBackend(t)
 	db := filepath.Join(t.TempDir(), "index.db")
 	if err := Rebuild(repoDir, db, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
-	at := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
-	fakeFetch(t, repoDir, at)
+	fakeFetch(t, repoDir, time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC))
 	if err := Update(repoDir, db, []string{"F-0001"}, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
-	got, ok, _ := SyncedAt(db)
-	if !ok || !got.Equal(at) {
-		t.Fatalf("SyncedAt = %v, %v; want %v", got, ok, at)
-	}
-	// An explicit time already recorded is never replaced by the fetch time.
-	explicit := time.Date(2026, 11, 14, 8, 0, 0, 0, time.UTC)
-	if err := Update(repoDir, db, []string{"F-0001"}, explicit); err != nil {
-		t.Fatal(err)
-	}
-	if err := Update(repoDir, db, []string{"F-0001"}, time.Time{}); err != nil {
-		t.Fatal(err)
-	}
-	if got, _, _ := SyncedAt(db); !got.Equal(explicit) {
-		t.Fatalf("SyncedAt = %v; want %v kept", got, explicit)
+	if _, ok, _ := SyncedAt(db); ok {
+		t.Fatal("Update stamped synced_at from FETCH_HEAD: the index never saw that fetch")
 	}
 }

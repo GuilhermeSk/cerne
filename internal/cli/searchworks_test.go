@@ -97,3 +97,41 @@ func TestAskContextIgnoresWorks(t *testing.T) {
 		t.Fatalf("ask context changed with works:\n%s\nvs\n%s", withWorks, plain)
 	}
 }
+
+// F-0408 crit. 1: work writes refresh the index in place (no rebuild by hand).
+func TestSearchWorksSeesWritesWithoutRebuild(t *testing.T) {
+	projDir := perDocFixture(t)
+	if _, err := execCerne(t, "search", "parcelas", "--dir", projDir); err != nil { // builds the index
+		t.Fatal(err)
+	}
+	steps := [][]string{
+		{"work", "start", "Auditar o cofre", "--agent", "ana"},
+		{"work", "log", "W-0001", "decidido usar snapshotmirror"},
+		{"work", "done", "W-0001", "--note", "fechado com vaultkey novo"},
+	}
+	for _, s := range steps {
+		if out, err := execCerne(t, append(s, "--dir", projDir)...); err != nil {
+			t.Fatalf("%v: %v\n%s", s, err, out)
+		}
+	}
+	for _, q := range []string{"cofre", "snapshotmirror", "vaultkey"} {
+		out, err := execCerne(t, "search", q, "--dir", projDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "W-0001 [done]") {
+			t.Errorf("search %q missed the work:\n%s", q, out)
+		}
+	}
+}
+
+// F-0408 crit. 3: works is always present, [] when nothing matches.
+func TestSearchWorksJSONEmptyArray(t *testing.T) {
+	out, err := execCerne(t, "search", "cartão", "--json", "--dir", worksFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"works": []`) {
+		t.Fatalf("want \"works\": [] in:\n%s", out)
+	}
+}

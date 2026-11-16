@@ -183,7 +183,8 @@ func insertRows(tx *sql.Tx, rows []row) error {
 // reinserted from the clone at repoDir, in one transaction; an id the clone no
 // longer has is only deleted. It needs an index Rebuild already built (an
 // error otherwise: the caller falls back to Rebuild). syncedAt, when not zero,
-// replaces the recorded sync time. Only the touched entities' files are read.
+// replaces the recorded sync time; with zero the recorded time stays, and
+// FETCH_HEAD is not consulted (the index never saw that fetch). Only the touched entities' files are read.
 func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 	if _, err := os.Stat(dbPath); err != nil {
 		return err
@@ -211,12 +212,14 @@ func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 		return err
 	}
 	defer tx.Rollback()
+	// An index built before works were indexed has no works_fts yet.
+	if _, err := tx.Exec(createWorksSQL); err != nil {
+		return err
+	}
 	for id := range want {
 		if _, err := tx.Exec(`DELETE FROM docs WHERE entity_id = ?`, id); err != nil {
 			return err
 		}
-		// An index built before works were indexed has no works_fts: the
-		// error sends the caller to a whole Rebuild, which creates it.
 		if strings.HasPrefix(id, "W-") {
 			if _, err := tx.Exec(`DELETE FROM works_fts WHERE work_id = ?`, id); err != nil {
 				return err
@@ -232,14 +235,6 @@ func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 	if !syncedAt.IsZero() {
 		if _, err := tx.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('synced_at', ?)`, syncedAt.UTC().Format(time.RFC3339)); err != nil {
 			return err
-		}
-	}
-	if syncedAt.IsZero() {
-		// Never replace a recorded time with the older fetch time.
-		if at, ok := gitback.FetchedAt(repoDir); ok {
-			if _, err := tx.Exec(`INSERT OR IGNORE INTO meta (key, value) VALUES ('synced_at', ?)`, at.UTC().Format(time.RFC3339)); err != nil {
-				return err
-			}
 		}
 	}
 	if err := setHead(tx, head); err != nil {

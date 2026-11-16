@@ -15,7 +15,7 @@ import (
 // statistics (and the order) of the docs table (F-0408).
 const (
 	dropWorksSQL   = `DROP TABLE IF EXISTS works_fts`
-	createWorksSQL = `CREATE VIRTUAL TABLE works_fts USING fts5(
+	createWorksSQL = `CREATE VIRTUAL TABLE IF NOT EXISTS works_fts USING fts5(
 		work_id, state UNINDEXED, actor UNINDEXED, title, body)`
 	insertWorkSQL = `INSERT INTO works_fts (work_id, state, actor, title, body) VALUES (?, ?, ?, ?, ?)`
 	searchWorkSQL = `SELECT work_id, state, actor, title FROM works_fts
@@ -36,14 +36,9 @@ type WorkResult struct {
 // workRowOf reads a work's handoff and log. logged, when not nil, is the set of
 // works that have a log directory: the rest skip the lookup.
 func workRowOf(repoDir string, w store.Work, logged map[string]bool) (workRow, error) {
-	// HandoffAt is set whenever a handoff is written: without it there is no
-	// file, and probing for one costs a syscall per work.
-	var handoff string
-	if w.HandoffAt != nil {
-		var err error
-		if handoff, _, err = readDoc(filepath.Join(repoDir, "content", "works", w.ID, "handoff.md")); err != nil {
-			return workRow{}, err
-		}
+	handoff, _, err := readDoc(filepath.Join(repoDir, "content", "works", w.ID, "handoff.md"))
+	if err != nil {
+		return workRow{}, err
 	}
 	var log []store.LogEntry
 	if logged == nil || logged[w.ID] {
@@ -114,7 +109,7 @@ func insertWorkRows(tx *sql.Tx, rows []workRow) error {
 	}
 	defer stmt.Close()
 	for _, r := range rows {
-		if _, err := stmt.Exec(r.id, r.state, r.actor, r.title, foldIdentifiers(r.body)); err != nil {
+		if _, err := stmt.Exec(r.id, r.state, r.actor, foldIdentifiers(r.title), foldIdentifiers(r.body)); err != nil {
 			return err
 		}
 	}

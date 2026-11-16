@@ -118,3 +118,58 @@ func TestSearchWorksOnIndexWithoutTable(t *testing.T) {
 		t.Fatalf("SearchWorks on old index = %v, %v; want empty, nil", got, err)
 	}
 }
+
+func TestUpdateOnIndexWithoutWorksTable(t *testing.T) {
+	repoDir, db := builtIndex(t)
+	conn, err := openDB(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Exec(`DROP TABLE works_fts`)
+	conn.Close()
+	saveNoteT(t, repoDir, "N-0009", "zebra listrada")
+	if err := Update(repoDir, db, []string{"N-0009"}, time.Time{}); err != nil {
+		t.Fatalf("Update of a note on an old index: %v", err)
+	}
+	saveWorkT(t, repoDir, store.Work{ID: "W-0001", Title: "novo trabalho frobnicate", State: domain.WorkActive, Actor: "bo"})
+	if err := Update(repoDir, db, []string{"W-0001"}, time.Time{}); err != nil {
+		t.Fatalf("Update of a work on an old index: %v", err)
+	}
+	if got := workIDs(t, db, "frobnicate"); len(got) != 1 {
+		t.Errorf("work not searchable after Update: %v", got)
+	}
+}
+
+// SearchWorks reads the query and folds the text like the docs table does.
+func TestWorksQueryAndFoldingLikeDocs(t *testing.T) {
+	repoDir := seedBackend(t)
+	now := time.Now().UTC()
+	saveWorkT(t, repoDir, store.Work{ID: "W-0001", Title: "revisar WorkspaceSwitcher", State: domain.WorkActive, Actor: "bo", HandoffAt: &now})
+	dir := filepath.Join(repoDir, "content", "works", "W-0001")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "handoff.md"), []byte("ver foo_bar e parseHTTPRequest\n"), 0o644)
+	db := filepath.Join(t.TempDir(), "index.db")
+	if err := Rebuild(repoDir, db, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"foo_bar", "Switcher", "HTTP", "foo_bar parseHTTPRequest"} {
+		if got := workIDs(t, db, q); len(got) != 1 {
+			t.Errorf("SearchWorks(%q) = %v, want [W-0001] (Search finds it: %v)", q, got, hits(t, db, q))
+		}
+	}
+}
+
+func TestWorkHandoffIndexedWithoutHandoffAt(t *testing.T) {
+	repoDir := seedBackend(t)
+	saveWorkT(t, repoDir, store.Work{ID: "W-0001", Title: "x", State: domain.WorkActive, Actor: "bo"})
+	dir := filepath.Join(repoDir, "content", "works", "W-0001")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "handoff.md"), []byte("passagem sem carimbo quuxmark\n"), 0o644)
+	db := filepath.Join(t.TempDir(), "index.db")
+	if err := Rebuild(repoDir, db, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := workIDs(t, db, "quuxmark"); len(got) != 1 {
+		t.Errorf("handoff without handoff_at not indexed: %v", got)
+	}
+}
