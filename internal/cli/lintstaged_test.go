@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -303,5 +305,199 @@ func TestLintStagedJSONEditsCount(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(out), &got); err != nil || got.Edits == nil || *got.Edits != 1 {
 		t.Fatalf("want edits 1, err=%v:\n%s", err, out)
+	}
+}
+
+// seedImplemented seeds F-0003: implemented, completed by event after the
+// Gauntlet/evidence adoption cutoffs, spec with one criterion, and the given
+// result.md (F-0403). Returns the pulled project.
+func seedImplemented(t *testing.T, result string) (projDir, repoDir string) {
+	t.Helper()
+	projDir, _, repoDir, _ = pulledProject(t)
+	now := time.Now().UTC()
+	if err := store.SaveFeature(repoDir, store.Feature{ID: "F-0003", Title: "Orchard ledger", State: domain.StateImplemented, Facets: []string{"code"}, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("SaveFeature: %v", err)
+	}
+	writeBackendDoc(t, repoDir, "content/features/F-0003/spec.md",
+		"---\ncerne_id: F-0003\n---\n\n# Orchard ledger\n\n## Objetivo e critérios de aceitação\n\n1. Post entries.\n")
+	writeBackendDoc(t, repoDir, "content/features/F-0003/result.md", result)
+	if err := store.AppendEvent(repoDir, domain.Event{EntityID: "F-0003", Type: "feature.completed", At: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)}); err != nil {
+		t.Fatalf("AppendEvent: %v", err)
+	}
+	if _, err := gitback.CommitAndPush(repoDir, "seed implemented F-0003"); err != nil {
+		t.Fatalf("CommitAndPush: %v", err)
+	}
+	if out, err := execCerne(t, "pull", "--dir", projDir); err != nil {
+		t.Fatalf("pull: %v\n%s", err, out)
+	}
+	return projDir, repoDir
+}
+
+const resultNoGauntlet = "---\ncerne_id: F-0003\n---\n\n# Orchard ledger\n\n## Resultado\n\nDone.\n"
+
+const resultWithGauntlet = "---\ncerne_id: F-0003\n---\n\n# Orchard ledger\n\n## Resultado\n\nDone.\n\n## Aceitação\n\n- critério 1 → TestPost\n\n## Gauntlet\n\nBarra: não aplicável (parity fix)\n"
+
+// implementedNoGauntlet: F-0003 whose result lacks evidence and Gauntlet.
+func implementedNoGauntlet(t *testing.T) (string, string) {
+	t.Helper()
+	return seedImplemented(t, resultNoGauntlet)
+}
+
+func lintKeys(fs []lint.Finding) []string {
+	var o []string
+	for _, f := range fs {
+		o = append(o, f.Rule+"|"+f.Entity+"|"+f.File+"|"+f.Detail)
+	}
+	sort.Strings(o)
+	return o
+}
+
+// treeFindings assembles the staged tree (no edits) and lints it.
+func treeFindings(t *testing.T, projDir, repoDir string, overlay map[string]string) []lint.Finding {
+	t.Helper()
+	cfg, _, err := project.LoadConfig(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _, cleanup, err := stagedLintRoot(repoDir, projDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	for rel, body := range overlay {
+		mustWrite(t, filepath.Join(root, filepath.FromSlash(rel)), body)
+	}
+	got, err := projectLint(root, projDir, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func hasRule(fs []lint.Finding, rule, entity string) bool {
+	for _, f := range fs {
+		if f.Rule == rule && f.Entity == entity {
+			return true
+		}
+	}
+	return false
+}
+
+// F-0403 crit. 1+4: the staged tree without edits yields the clone's findings
+// (same rule, entity, file, detail); fails when a rule reads a dir the tree lacks.
+func TestLintStagedTreeParity(t *testing.T) {
+	projDir, repoDir := implementedNoGauntlet(t)
+	cfg, _, err := project.LoadConfig(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := projectLint(repoDir, projDir, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasRule(want, lint.RuleResultMissingGauntlet, "F-0003") {
+		t.Fatalf("fixture must trip result-missing-gauntlet on the clone: %v", want)
+	}
+	got := treeFindings(t, projDir, repoDir, nil)
+	if !reflect.DeepEqual(lintKeys(got), lintKeys(want)) {
+		t.Fatalf("tree findings differ from clone:\n got %v\nwant %v", lintKeys(got), lintKeys(want))
+	}
+}
+
+// F-0403 crit. 1 at the CLI: `lint --staged --all --json` with no edit lists the
+// findings of `lint --json`, minus the modes only the default run has.
+func TestLintStagedAllJSONMatchesLintJSON(t *testing.T) {
+	projDir, _ := implementedNoGauntlet(t)
+	keys := func(args ...string) []string {
+		out, _ := execCerne(t, append(args, "--json", "--dir", projDir)...)
+		var rows []map[string]any
+		if err := json.NewDecoder(strings.NewReader(out)).Decode(&rows); err != nil {
+			t.Fatalf("%v: not a findings array: %v\n%s", args, err, out)
+		}
+		var o []string
+		for _, r := range rows {
+			if r["rule"] == lint.RuleDriftSuspect || r["rule"] == lint.RuleHookCitesMissingRule {
+				continue
+			}
+			b, _ := json.Marshal(r)
+			o = append(o, string(b))
+		}
+		sort.Strings(o)
+		return o
+	}
+	clone, staged := keys("lint"), keys("lint", "--staged", "--all")
+	if len(clone) == 0 || !reflect.DeepEqual(clone, staged) {
+		t.Fatalf("staged --all differs from lint:\n clone  %v\n staged %v", clone, staged)
+	}
+}
+
+// F-0403: a fresh backend has no events/; the tree still assembles and lints.
+func TestLintStagedTreeWithoutEventsDir(t *testing.T) {
+	projDir, repoDir := implementedNoGauntlet(t)
+	if err := os.RemoveAll(filepath.Join(repoDir, "events")); err != nil {
+		t.Fatal(err)
+	}
+	got := treeFindings(t, projDir, repoDir, nil)
+	if len(got) == 0 {
+		t.Fatal("expected the unrelated findings to still lint")
+	}
+}
+
+// skipEventsCopy stubs copyTree to behave like the tree before F-0403.
+func skipEventsCopy(t *testing.T) {
+	t.Helper()
+	old := copyTree
+	copyTree = func(src, dst string) error {
+		if filepath.Base(src) == "events" {
+			return nil
+		}
+		return old(src, dst)
+	}
+	t.Cleanup(func() { copyTree = old })
+}
+
+// F-0403 crit. 2: an edit that touches nothing a rule reads counts no finding as
+// fixed. The control (tree without events/) reports fixed findings, which is the
+// bug this feature removes.
+func TestLintStagedUnrelatedEditFixesNothing(t *testing.T) {
+	projDir, _ := implementedNoGauntlet(t)
+	specPath := filepath.Join(projDir, ".docs", "current", "features", "F-0001-parcelamento", "spec.md")
+	b, _ := os.ReadFile(specPath)
+	mustWrite(t, specPath, string(b)+"\nmais uma linha\n")
+	fixed := func() (int, string) {
+		out, err := execCerne(t, "lint", "--staged", "--json", "--dir", projDir)
+		var got map[string]any
+		if jerr := json.NewDecoder(strings.NewReader(out)).Decode(&got); jerr != nil {
+			t.Fatalf("not JSON (err=%v): %v\n%s", err, jerr, out)
+		}
+		n, ok := got["fixed_count"].(float64)
+		if !ok {
+			t.Fatalf("fixed_count missing:\n%s", out)
+		}
+		return int(n), out
+	}
+	n, _ := fixed()
+	text, _ := execCerne(t, "lint", "--staged", "--dir", projDir)
+	if n != 0 || strings.Contains(text, "fixed by your edits") {
+		t.Fatalf("unrelated edit must fix nothing, fixed_count=%d:\n%s", n, text)
+	}
+	skipEventsCopy(t)
+	if n, out := fixed(); n == 0 {
+		t.Fatalf("control: without events/ the clone's result findings should look fixed:\n%s", out)
+	}
+}
+
+// F-0403 crit. 3: the clone's result has evidence and a Gauntlet; overlaying a
+// version without "## Gauntlet" on the assembled tree trips result-missing-gauntlet,
+// and the unedited tree does not. (An implemented feature's .docs result is frozen
+// for push, so the edit is overlaid on the tree directly.)
+func TestLintStagedTreeGauntletGate(t *testing.T) {
+	projDir, repoDir := seedImplemented(t, resultWithGauntlet)
+	if hasRule(treeFindings(t, projDir, repoDir, nil), lint.RuleResultMissingGauntlet, "F-0003") {
+		t.Fatal("unedited tree must not report result-missing-gauntlet")
+	}
+	edited := treeFindings(t, projDir, repoDir, map[string]string{"content/features/F-0003/result.md": resultNoGauntlet})
+	if !hasRule(edited, lint.RuleResultMissingGauntlet, "F-0003") {
+		t.Fatalf("overlay without Gauntlet must trip result-missing-gauntlet: %v", lintKeys(edited))
 	}
 }
