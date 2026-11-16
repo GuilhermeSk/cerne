@@ -319,7 +319,7 @@ func newCostBackfillCmd() *cobra.Command {
 		Short: "Recover the critic and judge cost of past Gauntlets from the transcripts (F-0396)",
 		Long: "Classifies every subagent of the project's ledger sessions by its transcript (a judge ends in the " +
 			"verdict line or was asked for it; a critic is a code-reviewer or read the diff fence) and counts it on " +
-			"the feature its parent session was bound to — never by what its prompt says. Without --apply it only " +
+			"the feature its parent session was bound to — never by what its prompt says; a prompt can only take a subagent out, to ambiguous, when it cites another feature than the binding's (the line names the reason). Without --apply it only " +
 			"reports: one line per feature with the agents and weighted tokens per role, then what was left out " +
 			"(unattributed, ambiguous, already with roles, no anchor, inconsistent). --apply records a retro bind " +
 			"with the role per subagent and completes the anchor: an implemented feature's '## Custo' in its " +
