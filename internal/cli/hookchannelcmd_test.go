@@ -470,3 +470,32 @@ func TestHookChannelSubagentNoBoard(t *testing.T) {
 		t.Fatalf("subagent: %v %q", err, out)
 	}
 }
+
+// F-0409 crit. 2: a clone fetched more than 24 h ago is flagged after the
+// board; a recent fetch, or none recorded, prints nothing extra.
+func TestHookChannelSessionStartBoardFetchAge(t *testing.T) {
+	projDir, _, repoDir := setupProject(t)
+	fh := filepath.Join(repoDir, ".git", "FETCH_HEAD")
+	if err := os.WriteFile(fh, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set := func(age time.Duration) {
+		at := time.Now().Add(-age)
+		if err := os.Chtimes(fh, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(time.Hour)
+	if out := sessionStartBoard(t, projDir); out != "- no active work\n" {
+		t.Fatalf("recent fetch: %q", out)
+	}
+	set(50 * time.Hour)
+	want := "- no active work\ncerne: the shared clone was last fetched 2 day(s) ago — run `cerne pull` to refresh it.\n"
+	if out := sessionStartBoard(t, projDir); out != want {
+		t.Fatalf("old fetch: got %q want %q", out, want)
+	}
+	os.Remove(fh)
+	if out := sessionStartBoard(t, projDir); out != "- no active work\n" {
+		t.Fatalf("no FETCH_HEAD: %q", out)
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/henriquesakata/cerne/internal/app"
+	"github.com/henriquesakata/cerne/internal/gitback"
 	"github.com/henriquesakata/cerne/internal/hooks"
 	"github.com/henriquesakata/cerne/internal/materialize"
 	"github.com/henriquesakata/cerne/internal/project"
@@ -94,6 +95,17 @@ func loadBoardFromClone(repoDir string, recentDays int, now time.Time) (string, 
 	return materialize.RenderBoard(works, events, handoffs, now, recentDays)
 }
 
+// fetchAgeNotice flags a clone last fetched more than 24 h ago (F-0409 crit. 2):
+// the board is only as new as the clone. "" when recent or never fetched.
+func fetchAgeNotice(repoDir string, now time.Time) string {
+	at, ok := gitback.FetchedAt(repoDir)
+	if !ok || now.Sub(at) <= 24*time.Hour {
+		return ""
+	}
+	h := int(now.Sub(at).Hours())
+	return fmt.Sprintf("cerne: the shared clone was last fetched %d day(s) ago — run `cerne pull` to refresh it.\n", h/24)
+}
+
 // sessionBoard is the board of the project's clone, "" on any error or after
 // boardDeadline (fail-open, N-0021).
 func sessionBoard(projectID string, recentDays int) string {
@@ -112,6 +124,9 @@ func sessionBoard(projectID string, recentDays int) string {
 	}()
 	select {
 	case out := <-done:
+		if out != "" {
+			out += fetchAgeNotice(repoDir, time.Now())
+		}
 		return out
 	case <-time.After(boardDeadline):
 		return ""
