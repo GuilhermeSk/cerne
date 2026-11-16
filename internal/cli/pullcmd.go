@@ -207,6 +207,13 @@ func runPull(cmd *cobra.Command, dir, scope string, okfFlag, force, syncSkillsFl
 // pullSyncSkills runs the same reconcile as 'cerne skill sync' against the
 // clone the pull just refreshed, printing any change it made.
 func pullSyncSkills(cmd *cobra.Command, ctx projCtx) error {
+	// F-0405: the canonical skills follow the binary that runs the pull (Claude
+	// only; other providers stay with 'cerne skill install --provider').
+	canonical, err := skills.Install(ctx.projDir)
+	if err != nil {
+		return err
+	}
+	printSkillResults(cmd.OutOrStdout(), canonical)
 	items, err := skills.LoadGoldenPaths(ctx.repoDir)
 	if err != nil {
 		return err
