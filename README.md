@@ -237,7 +237,7 @@ Two things cerne does not change. Your AI agent still sends what it reads to its
 | **Search and Q&A over history** | Full-text search (SQLite FTS5) over everything, including what was rejected. `cerne ask` answers with citations. |
 | **Deterministic lint** | Stale references, broken links, orphans, missing gate documents, unregistered sources. |
 | **Built for parallel agents** | Per-document merge on `pull`, auto-rebase on `push`, a conflict-free `docs.lock` across branches and worktrees. |
-| **Your agent already knows how** | `cerne init` installs the skills and hooks that teach Claude Code the workflow, and delivers the authoring guide to Cursor, Codex CLI and Gemini CLI when their config folder is present, so you just ask for the feature. Supported agents: **Claude Code, Cursor, Codex CLI and Gemini CLI**; what each one receives, and what degrades, is in the [provider parity matrix](docs/provider-parity.md). |
+| **Your agent already knows how** | `cerne init` installs the skills and hooks that teach Claude Code the workflow, and delivers the authoring guide to Cursor, Codex CLI and Gemini CLI when their config folder is present, so you just ask for the feature. Built for **Claude Code, Cursor, Codex CLI and Gemini CLI**, but tested extensively only with Claude Code: Cursor has had light use, and not every feature works fully there yet, while Codex CLI and Gemini CLI have not been tested. What each one receives, and what degrades, is in the [provider parity matrix](docs/provider-parity.md). |
 | **Single binary** | macOS, Linux and Windows. The UI is embedded. No runtime dependencies. |
 
 ![The cerne web UI: a dashboard of what is waiting on you, the kanban board, and a feature page with its spec and the Accept button](docs/assets/ui-tour.gif)
@@ -261,7 +261,7 @@ The idea is close to Karpathy's [LLM Wiki](https://gist.github.com/karpathy/442a
 
 ## Status
 
-cerne is young and in daily use. This repository has been built with it since day one, and the 443 features above went through the same flow you would use. Expect rough edges, and please [open an issue](https://github.com/henriquesakata/cerne/issues) when you hit one: feedback from early users shapes what comes next.
+cerne is young and in daily use with Claude Code. Its code was written entirely by agents. This repository has been built with it since day one, and the 443 features above went through the same flow you would use. Expect rough edges, and please [open an issue](https://github.com/henriquesakata/cerne/issues) when you hit one: feedback from early users shapes what comes next.
 
 Questions and ideas go to [Discussions](https://github.com/henriquesakata/cerne/discussions). To contribute code, start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
