@@ -215,7 +215,7 @@ func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 	// An index built before works were indexed has no works_fts: its work rows
 	// are skipped, not created half-filled; the search rebuilds it whole.
 	var hasWorks int
-	if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'works_fts'`).Scan(&hasWorks); err != nil {
+	if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'works_fts' AND sql LIKE '%raw_title%'`).Scan(&hasWorks); err != nil {
 		return err
 	}
 	for id := range want {

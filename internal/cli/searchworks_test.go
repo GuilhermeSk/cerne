@@ -270,3 +270,25 @@ func TestSearchWorksFlag(t *testing.T) {
 		t.Fatalf("json = %s, %v", js, err)
 	}
 }
+
+// The works group prints the original title, never the folded one.
+func TestSearchWorksPrintOriginalTitle(t *testing.T) {
+	projDir := perDocFixture(t)
+	ctx, err := resolvePaths(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitBackend(t, ctx.repoDir)
+	if out, err := execCerne(t, "work", "start", "upgradeIfNewer breaks pods", "--agent", "ana", "--dir", projDir); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, args := range [][]string{{"search", "Newer"}, {"search", "--works", "Newer"}, {"search", "Newer", "--json"}} {
+		out, err := execCerne(t, append(args, "--dir", projDir)...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out, "upgradeIfNewer breaks pods") || strings.Contains(out, "upgrade If Newer") {
+			t.Errorf("%v printed:\n%s", args, out)
+		}
+	}
+}

@@ -217,3 +217,17 @@ func TestSearchWorksRanking(t *testing.T) {
 		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
+
+// The folded title is for matching only: results carry the original title.
+func TestWorksShowOriginalTitle(t *testing.T) {
+	repoDir := seedBackend(t)
+	saveWorkT(t, repoDir, store.Work{ID: "W-0001", Title: "upgradeIfNewer breaks pods", State: domain.WorkActive, Actor: "bo"})
+	db := filepath.Join(t.TempDir(), "index.db")
+	if err := Rebuild(repoDir, db, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	res, _, err := SearchWorks(db, "Newer", 5)
+	if err != nil || len(res) != 1 || res[0].Title != "upgradeIfNewer breaks pods" {
+		t.Fatalf("SearchWorks(Newer) = %+v, %v", res, err)
+	}
+}

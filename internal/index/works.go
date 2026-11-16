@@ -16,10 +16,10 @@ import (
 const (
 	dropWorksSQL   = `DROP TABLE IF EXISTS works_fts`
 	createWorksSQL = `CREATE VIRTUAL TABLE works_fts USING fts5(
-		work_id, state UNINDEXED, actor UNINDEXED, title, body)`
-	insertWorkSQL = `INSERT INTO works_fts (work_id, state, actor, title, body) VALUES (?, ?, ?, ?, ?)`
-	searchWorkSQL = `SELECT work_id, state, actor, title FROM works_fts
-		WHERE works_fts MATCH ? ORDER BY (state = 'active') DESC, bm25(works_fts, 1.0, 0, 0, 10.0, 1.0) LIMIT ?`
+		work_id, state UNINDEXED, actor UNINDEXED, raw_title UNINDEXED, title, body)`
+	insertWorkSQL = `INSERT INTO works_fts (work_id, state, actor, raw_title, title, body) VALUES (?, ?, ?, ?, ?, ?)`
+	searchWorkSQL = `SELECT work_id, state, actor, raw_title FROM works_fts
+		WHERE works_fts MATCH ? ORDER BY (state = 'active') DESC, bm25(works_fts, 1.0, 0, 0, 0, 10.0, 1.0) LIMIT ?`
 )
 
 // workRow is one work to insert: body joins the closing note, the handoff and
@@ -109,7 +109,7 @@ func insertWorkRows(tx *sql.Tx, rows []workRow) error {
 	}
 	defer stmt.Close()
 	for _, r := range rows {
-		if _, err := stmt.Exec(r.id, r.state, r.actor, foldIdentifiers(r.title), foldIdentifiers(r.body)); err != nil {
+		if _, err := stmt.Exec(r.id, r.state, r.actor, r.title, foldIdentifiers(r.title), foldIdentifiers(r.body)); err != nil {
 			return err
 		}
 	}
@@ -185,7 +185,8 @@ func runWorkQuery(db *sql.DB, match string, limit int) ([]WorkResult, int, error
 }
 
 // HasWorks reports whether the index at dbPath has the works table; an index
-// built before works were indexed does not and must be rebuilt once.
+// built before works were indexed (or with an older works schema) does not
+// and must be rebuilt once.
 func HasWorks(dbPath string) bool {
 	db, err := openDB(dbPath)
 	if err != nil {
@@ -193,5 +194,5 @@ func HasWorks(dbPath string) bool {
 	}
 	defer db.Close()
 	var n int
-	return db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'works_fts'`).Scan(&n) == nil && n > 0
+	return db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'works_fts' AND sql LIKE '%raw_title%'`).Scan(&n) == nil && n > 0
 }
