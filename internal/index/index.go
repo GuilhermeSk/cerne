@@ -68,6 +68,10 @@ type Result struct {
 // title-only row (doc="", empty body). The whole rebuild runs in a single
 // transaction.
 func Rebuild(repoDir, dbPath string, syncedAt time.Time) error {
+	if syncedAt.IsZero() {
+		// No pull time: the clone's last fetch is when it matched the backend.
+		syncedAt, _ = gitback.FetchedAt(repoDir)
+	}
 	head := cloneHead(repoDir)
 	rows, err := collectRows(repoDir)
 	if err != nil {
@@ -201,6 +205,14 @@ func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 	if !syncedAt.IsZero() {
 		if _, err := tx.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('synced_at', ?)`, syncedAt.UTC().Format(time.RFC3339)); err != nil {
 			return err
+		}
+	}
+	if syncedAt.IsZero() {
+		// Never replace a recorded time with the older fetch time.
+		if at, ok := gitback.FetchedAt(repoDir); ok {
+			if _, err := tx.Exec(`INSERT OR IGNORE INTO meta (key, value) VALUES ('synced_at', ?)`, at.UTC().Format(time.RFC3339)); err != nil {
+				return err
+			}
 		}
 	}
 	if err := setHead(tx, head); err != nil {
