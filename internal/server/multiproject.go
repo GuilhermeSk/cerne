@@ -3,9 +3,12 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/henriquesakata/cerne/internal/gitback"
 	"github.com/henriquesakata/cerne/internal/project"
@@ -92,20 +95,18 @@ func (s *MultiServer) mux() http.Handler {
 			// served docs stay pinned to that day's SHA forever (client project F-0517).
 			// Throttled to one fetch per TTL per clone.
 			// F-0434: the registered backend is the one docs.lock pins, else the
-			// CERNE_SERVE_PROJECTS one; with neither there is nothing to compare
-			// the clone against, so it is not served.
-			backend := ""
-			if lock, err := project.LoadLock(projDir); err == nil {
-				backend = lock.Backend
-			}
-			if backend == "" {
-				backend = configuredBackends()[pid]
-			}
-			if backend == "" {
-				writeJSON(w, http.StatusConflict, errorBody("cannot verify the backend of project "+pid+": docs.lock is unreadable or empty and no backend is configured; register it again"))
+			// CERNE_SERVE_PROJECTS one. A known backend that differs from the
+			// clone's origin is refused; an unreadable lock with no configured
+			// backend is too. A registration made before the lock carried the
+			// backend (empty) keeps serving, with a warning to re-register.
+			backend, known := registeredBackend(projDir, pid)
+			if !known {
+				writeJSON(w, http.StatusConflict, errorBody("cannot verify the backend of project "+pid+": docs.lock is unreadable and no backend is configured; register it again"))
 				return
 			}
-			if err := gitback.CheckOrigin(repoDir, backend); err != nil {
+			if backend == "" {
+				warnUnverified(pid)
+			} else if err := checkOriginTTL(repoDir, backend); err != nil {
 				writeJSON(w, http.StatusConflict, errorBody(err.Error()))
 				return
 			}
@@ -151,7 +152,7 @@ func (s *MultiServer) handleRegister(w http.ResponseWriter, r *http.Request, pid
 		name = pid
 	}
 	if err := ensureProjectClone(repoDir, projDir, req.Backend, name, req.Modules); err != nil {
-		if errors.Is(err, gitback.ErrForeignClone) {
+		if errors.Is(err, gitback.ErrForeignClone) || errors.Is(err, gitback.ErrUnverifiableClone) {
 			writeJSON(w, http.StatusConflict, errorBody(err.Error()))
 			return
 		}
@@ -199,4 +200,49 @@ func ensureProjectClone(repoDir, projDir, backend, name string, modules []string
 		}
 	}
 	return nil
+}
+
+// registeredBackend is pid's backend: docs.lock's, else the configured one.
+// known is false only when the lock is unreadable and nothing is configured;
+// an empty backend with known true is a legacy registration.
+func registeredBackend(projDir, pid string) (backend string, known bool) {
+	lock, err := project.LoadLock(projDir)
+	if err == nil && lock.Backend != "" {
+		return lock.Backend, true
+	}
+	if b := configuredBackends()[pid]; b != "" {
+		return b, true
+	}
+	return "", err == nil
+}
+
+var warnedUnverified sync.Map
+
+func warnUnverified(pid string) {
+	if _, dup := warnedUnverified.LoadOrStore(pid, true); !dup {
+		log.Printf("cerne: project %s has no backend in docs.lock, so its cache clone cannot be verified; register it again (PUT /api/projects/%s)", pid, pid)
+	}
+}
+
+type originVerdict struct {
+	backend string
+	at      time.Time
+	err     error
+}
+
+var originChecks sync.Map // repoDir -> originVerdict
+
+// checkOriginTTL is gitback.CheckOrigin, remembered per clone for the refresh
+// TTL (none when the refresh is off) so a burst of requests reads .git/config
+// once.
+func checkOriginTTL(repoDir, backend string) error {
+	ttl := pullTTL()
+	if v, ok := originChecks.Load(repoDir); ok && ttl > 0 {
+		if c := v.(originVerdict); c.backend == backend && nowFunc().Sub(c.at) < ttl {
+			return c.err
+		}
+	}
+	err := gitback.CheckOrigin(repoDir, backend)
+	originChecks.Store(repoDir, originVerdict{backend, nowFunc(), err})
+	return err
 }

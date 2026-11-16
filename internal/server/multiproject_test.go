@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -278,8 +279,9 @@ func mustRepo(t *testing.T, pid string) string {
 	return repoDir
 }
 
-// An unreadable or empty docs.lock must not switch the check off (F-0434).
-func TestServer_UnverifiableBackendIsRefused(t *testing.T) {
+// A legacy registration (empty backend in docs.lock) keeps serving; an
+// unreadable lock with nothing configured is refused (F-0434).
+func TestServer_UnverifiableBackend(t *testing.T) {
 	t.Setenv("CERNE_CACHE_DIR", t.TempDir())
 	h := NewMultiProject(mpSecret)
 	origin := seedBareBackend(t, "Projeto A")
@@ -290,12 +292,48 @@ func TestServer_UnverifiableBackendIsRefused(t *testing.T) {
 	if err := project.SaveLock(projDir, project.Lock{Version: 1}); err != nil {
 		t.Fatal(err)
 	}
+	if rec := doMP(t, h, http.MethodGet, "/api/projects/proj-y/state", "", mpSecret, nil); rec.Code != http.StatusOK {
+		t.Fatalf("legacy empty backend: status %d, want 200 (served, warned)", rec.Code)
+	}
+	if err := os.WriteFile(filepath.Join(projDir, "docs.lock"), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	rec := doMP(t, h, http.MethodGet, "/api/projects/proj-y/state", "", mpSecret, nil)
 	if rec.Code != http.StatusConflict || strings.Contains(rec.Body.String(), "Projeto A") {
-		t.Fatalf("status %d body %s, want 409 without data", rec.Code, rec.Body.String())
+		t.Fatalf("unreadable lock: status %d body %s, want 409 without data", rec.Code, rec.Body.String())
 	}
 	t.Setenv("CERNE_SERVE_PROJECTS", "proj-y="+origin)
 	if rec := doMP(t, h, http.MethodGet, "/api/projects/proj-y/state", "", mpSecret, nil); rec.Code != http.StatusOK {
 		t.Fatalf("configured fallback: status %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// The origin check is remembered per clone for the TTL (F-0434).
+func TestServer_OriginCheckIsCachedForTTL(t *testing.T) {
+	t.Setenv("CERNE_CACHE_DIR", t.TempDir())
+	t.Setenv("CERNE_SERVE_PULL_TTL", "1h")
+	h := NewMultiProject(mpSecret)
+	origin := seedBareBackend(t, "Projeto A")
+	if rec := doMP(t, h, http.MethodPut, "/api/projects/proj-z", regBody(t, origin), mpSecret, nil); rec.Code != http.StatusOK {
+		t.Fatalf("register: %d", rec.Code)
+	}
+	get := func() int {
+		return doMP(t, h, http.MethodGet, "/api/projects/proj-z/state", "", mpSecret, nil).Code
+	}
+	if get() != http.StatusOK {
+		t.Fatal("first read must pass")
+	}
+	repoDir, _, _ := projectPaths("proj-z")
+	cfg := filepath.Join(repoDir, ".git", "config")
+	raw, _ := os.ReadFile(cfg)
+	if err := os.WriteFile(cfg, []byte(strings.ReplaceAll(string(raw), origin, origin+"-other")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if get() != http.StatusOK {
+		t.Fatal("within the TTL the verdict is reused (no second read of .git/config)")
+	}
+	originChecks.Delete(repoDir)
+	if get() != http.StatusConflict {
+		t.Fatal("after the verdict expires a swapped origin is refused")
 	}
 }
