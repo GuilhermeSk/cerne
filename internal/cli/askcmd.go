@@ -68,7 +68,8 @@ func runAsk(cmd *cobra.Command, dir, query string, opts askOpts) error {
 		return err
 	}
 	out := cmd.OutOrStdout()
-	if _, err := os.Stat(dbPath); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(dbPath); errors.Is(err, os.ErrNotExist) || (err == nil && !index.HasWorks(dbPath)) {
+		// (a missing index, or one built before works were indexed)
 		// In --json mode stdout must stay pure JSON: build the index silently.
 		if !opts.asJSON {
 			fmt.Fprintln(out, "Building index...")

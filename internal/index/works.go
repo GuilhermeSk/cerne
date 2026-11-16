@@ -15,7 +15,7 @@ import (
 // statistics (and the order) of the docs table (F-0408).
 const (
 	dropWorksSQL   = `DROP TABLE IF EXISTS works_fts`
-	createWorksSQL = `CREATE VIRTUAL TABLE IF NOT EXISTS works_fts USING fts5(
+	createWorksSQL = `CREATE VIRTUAL TABLE works_fts USING fts5(
 		work_id, state UNINDEXED, actor UNINDEXED, title, body)`
 	insertWorkSQL = `INSERT INTO works_fts (work_id, state, actor, title, body) VALUES (?, ?, ?, ?, ?)`
 	searchWorkSQL = `SELECT work_id, state, actor, title FROM works_fts
@@ -157,4 +157,16 @@ func runWorkQuery(db *sql.DB, query string, limit int) ([]WorkResult, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// HasWorks reports whether the index at dbPath has the works table; an index
+// built before works were indexed does not and must be rebuilt once.
+func HasWorks(dbPath string) bool {
+	db, err := openDB(dbPath)
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+	var n int
+	return db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'works_fts'`).Scan(&n) == nil && n > 0
 }

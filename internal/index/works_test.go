@@ -119,27 +119,6 @@ func TestSearchWorksOnIndexWithoutTable(t *testing.T) {
 	}
 }
 
-func TestUpdateOnIndexWithoutWorksTable(t *testing.T) {
-	repoDir, db := builtIndex(t)
-	conn, err := openDB(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	conn.Exec(`DROP TABLE works_fts`)
-	conn.Close()
-	saveNoteT(t, repoDir, "N-0009", "zebra listrada")
-	if err := Update(repoDir, db, []string{"N-0009"}, time.Time{}); err != nil {
-		t.Fatalf("Update of a note on an old index: %v", err)
-	}
-	saveWorkT(t, repoDir, store.Work{ID: "W-0001", Title: "novo trabalho frobnicate", State: domain.WorkActive, Actor: "bo"})
-	if err := Update(repoDir, db, []string{"W-0001"}, time.Time{}); err != nil {
-		t.Fatalf("Update of a work on an old index: %v", err)
-	}
-	if got := workIDs(t, db, "frobnicate"); len(got) != 1 {
-		t.Errorf("work not searchable after Update: %v", got)
-	}
-}
-
 // SearchWorks reads the query and folds the text like the docs table does.
 func TestWorksQueryAndFoldingLikeDocs(t *testing.T) {
 	repoDir := seedBackend(t)
@@ -171,5 +150,26 @@ func TestWorkHandoffIndexedWithoutHandoffAt(t *testing.T) {
 	}
 	if got := workIDs(t, db, "quuxmark"); len(got) != 1 {
 		t.Errorf("handoff without handoff_at not indexed: %v", got)
+	}
+}
+
+func TestUpdateOnOldIndexDoesNotCreateWorksTable(t *testing.T) {
+	repoDir, db := builtIndex(t)
+	conn, err := openDB(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Exec(`DROP TABLE works_fts`)
+	conn.Close()
+	saveWorkT(t, repoDir, store.Work{ID: "W-0001", Title: "x frobnicate", State: domain.WorkActive, Actor: "bo"})
+	saveNoteT(t, repoDir, "N-0009", "zebra listrada")
+	if err := Update(repoDir, db, []string{"W-0001", "N-0009"}, time.Time{}); err != nil {
+		t.Fatalf("Update on an old index: %v", err)
+	}
+	if HasWorks(db) {
+		t.Fatal("Update created works_fts holding only the touched works")
+	}
+	if got := hits(t, db, "zebra"); len(got) != 1 {
+		t.Errorf("note not updated: %v", got)
 	}
 }

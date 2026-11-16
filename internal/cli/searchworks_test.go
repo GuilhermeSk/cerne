@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
@@ -133,5 +134,72 @@ func TestSearchWorksJSONEmptyArray(t *testing.T) {
 	}
 	if !strings.Contains(out, `"works": []`) {
 		t.Fatalf("want \"works\": [] in:\n%s", out)
+	}
+}
+
+// dropWorksTable turns the index at db into the old schema (no works_fts).
+func dropWorksTable(t *testing.T, db string) {
+	t.Helper()
+	conn, err := sql.Open("sqlite", db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.Exec(`DROP TABLE works_fts`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func hasWorksTable(t *testing.T, db string) bool {
+	t.Helper()
+	conn, err := sql.Open("sqlite", db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var n int
+	if err := conn.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'works_fts'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n > 0
+}
+
+// An index built by a binary older than F-0408 has no works table: the first
+// search rebuilds it once, and a current index is left alone afterwards.
+func TestSearchRebuildsIndexWithoutWorksTableOnce(t *testing.T) {
+	projDir := worksFixture(t)
+	if _, err := execCerne(t, "search", "parcelas", "--dir", projDir); err != nil { // builds
+		t.Fatal(err)
+	}
+	ctx, err := resolvePaths(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := indexPathFor(ctx.repoDir)
+	dropWorksTable(t, db)
+
+	out, err := execCerne(t, "search", "parcelas", "--dir", projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "W-0001 [active]") || !hasWorksTable(t, db) {
+		t.Fatalf("old index not rebuilt (table %v):\n%s", hasWorksTable(t, db), out)
+	}
+
+	// Current index: a marker in the file survives the next search.
+	conn, err := sql.Open("sqlite", db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(`INSERT INTO works_fts (work_id, state, actor, title, body) VALUES ('W-9999', 'active', 'x', 'marcador', '')`); err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	out, err = execCerne(t, "search", "marcador", "--dir", projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "W-9999") {
+		t.Fatalf("a current index was rebuilt:\n%s", out)
 	}
 }

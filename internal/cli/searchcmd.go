@@ -78,7 +78,8 @@ func runSearch(cmd *cobra.Command, dir, query string, limit int, asJSON, perDoc 
 		return err
 	}
 	out := cmd.OutOrStdout()
-	if _, err := os.Stat(dbPath); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(dbPath); errors.Is(err, os.ErrNotExist) || (err == nil && !index.HasWorks(dbPath)) {
+		// (a missing index, or one built before works were indexed)
 		// In --json mode stdout must stay pure JSON, so build the index silently.
 		if !asJSON {
 			fmt.Fprintln(out, "Building index...")

@@ -212,15 +212,17 @@ func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 		return err
 	}
 	defer tx.Rollback()
-	// An index built before works were indexed has no works_fts yet.
-	if _, err := tx.Exec(createWorksSQL); err != nil {
+	// An index built before works were indexed has no works_fts: its work rows
+	// are skipped, not created half-filled; the search rebuilds it whole.
+	var hasWorks int
+	if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'works_fts'`).Scan(&hasWorks); err != nil {
 		return err
 	}
 	for id := range want {
 		if _, err := tx.Exec(`DELETE FROM docs WHERE entity_id = ?`, id); err != nil {
 			return err
 		}
-		if strings.HasPrefix(id, "W-") {
+		if hasWorks > 0 && strings.HasPrefix(id, "W-") {
 			if _, err := tx.Exec(`DELETE FROM works_fts WHERE work_id = ?`, id); err != nil {
 				return err
 			}
@@ -229,8 +231,10 @@ func Update(repoDir, dbPath string, ids []string, syncedAt time.Time) error {
 	if err := insertRows(tx, rows); err != nil {
 		return err
 	}
-	if err := insertWorkRows(tx, workRows); err != nil {
-		return err
+	if hasWorks > 0 {
+		if err := insertWorkRows(tx, workRows); err != nil {
+			return err
+		}
 	}
 	if !syncedAt.IsZero() {
 		if _, err := tx.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('synced_at', ?)`, syncedAt.UTC().Format(time.RFC3339)); err != nil {
