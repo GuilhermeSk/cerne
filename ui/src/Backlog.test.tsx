@@ -317,7 +317,16 @@ describe('Backlog — refinar candidata no chat (F-0256)', () => {
 })
 
 // F-0431: nova conversa e histórico vivem na barra do chat, não na coluna.
+const mockWidth = (wide: boolean) =>
+  vi.stubGlobal('matchMedia', (q: string) => ({
+    matches: wide,
+    media: q,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }))
+
 describe('Backlog — barra do chat com nova conversa e histórico (F-0431)', () => {
+  beforeEach(() => mockWidth(false))
   const toolbar = () => document.querySelector('.backlog-chat-toolbar') as HTMLElement
   const trigger = () => within(toolbar()).getByRole('button', { name: /conversas \(/i })
 
@@ -432,5 +441,54 @@ describe('Backlog — barra do chat com nova conversa e histórico (F-0431)', ()
     const id = trigger().getAttribute('aria-controls')
     expect(id).toBeTruthy()
     expect(document.getElementById(id!)?.querySelector('.conversation-list')).not.toBeNull()
+  })
+})
+
+// F-0431 rodada 2: a partir de 48rem o histórico é uma coluna sempre à vista.
+describe('Backlog — coluna de histórico no painel do chat (F-0431)', () => {
+  beforeEach(() => mockWidth(true))
+  const rail = () => document.querySelector('.backlog-chat-rail') as HTMLElement
+
+  it('critérios 1 e 5: largo, com 50 candidatas, a coluna fica no painel do chat e só lá', async () => {
+    payload = state(Array.from({ length: 50 }, (_, i) => feature(`F-${String(i + 1).padStart(4, '0')}`)))
+    render(<Backlog />)
+    await screen.findByText('50 candidata(s)')
+    expect(rail().closest('.backlog-chat-body')).not.toBeNull()
+    expect(rail().closest('.backlog-chat')).not.toBeNull()
+    expect(within(rail()).getByRole('button', { name: /nova conversa/i })).toBeInTheDocument()
+    expect(rail().querySelector('.conversation-list')).not.toBeNull()
+    const toolbar = document.querySelector('.backlog-chat-toolbar') as HTMLElement
+    expect(within(toolbar).queryByRole('button', { name: /nova conversa/i })).toBeNull()
+    expect(within(toolbar).queryByRole('button', { name: /conversas \(/i })).toBeNull()
+    const col = document.querySelector('.backlog-list-col') as HTMLElement
+    expect(col.querySelector('.conversation-list')).toBeNull()
+    expect(document.querySelectorAll('.conversation-list')).toHaveLength(1)
+  })
+
+  it('critérios 1 a 3: um clique numa conversa da coluna troca a ativa; Nova conversa cria outra', async () => {
+    writeChats(
+      [
+        { id: 'a', title: 'Conversa A', updatedAt: Date.now() - 1000, messages: [{ role: 'user', content: 'msg A' }], model: '', effort: '' },
+        { id: 'b', title: 'Conversa B', updatedAt: Date.now(), messages: [{ role: 'user', content: 'msg B' }], model: '', effort: '' },
+      ],
+      'b',
+    )
+    render(<Backlog />)
+    expect(await screen.findByText('msg B')).toBeInTheDocument()
+    fireEvent.click(within(rail()).getByText('Conversa A'))
+    expect(await screen.findByText('msg A')).toBeInTheDocument()
+    expect(within(rail()).getAllByRole('button', { name: /excluir/i })).toHaveLength(2)
+    fireEvent.click(within(rail()).getByRole('button', { name: /nova conversa/i }))
+    await waitFor(() => expect(screen.queryByText('msg A')).not.toBeInTheDocument())
+    expect(readChats().chats).toHaveLength(3)
+  })
+
+  it('critério 7: largo, "Refinar no chat" mostra o aviso na barra', async () => {
+    payload = state([feature('F-0001')])
+    render(<Backlog />)
+    fireEvent.click(await screen.findByRole('button', { name: /refinar no chat/i }))
+    await waitFor(() =>
+      expect(document.querySelector('.backlog-chat-toolbar .backlog-chat-refining')).toHaveTextContent('Refinando F-0001'),
+    )
   })
 })

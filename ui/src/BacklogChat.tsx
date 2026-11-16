@@ -554,6 +554,23 @@ type Props = {
   }
 }
 
+// useWide (F-0431): >= 48rem o histórico é uma coluna; abaixo, o menu da barra.
+// Sem matchMedia (jsdom puro) vale o estreito. A lista é montada num lugar só.
+const WIDE = '(min-width: 48rem)'
+function useWide(): boolean {
+  const mq = () => (typeof window.matchMedia === 'function' ? window.matchMedia(WIDE) : null)
+  const [wide, setWide] = useState(() => mq()?.matches ?? false)
+  useEffect(() => {
+    const m = mq()
+    if (!m) return
+    const on = () => setWide(m.matches)
+    on()
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [])
+  return wide
+}
+
 // HistoryMenu (F-0431): "Nova conversa" direto + gatilho "Conversas (N)" que
 // abre a lista num menu. Sem popover nativo (o jsdom do Vitest não tem
 // showPopover): estado `open` e, enquanto aberto, Esc devolve o foco ao gatilho
@@ -621,6 +638,7 @@ function HistoryMenu({ history }: { history: NonNullable<Props['history']> }) {
 }
 
 export default function BacklogChat({ conversation, onUpdate, onRegistered, history }: Props) {
+  const wide = useWide()
   const [messages, setMessages] = useState<ChatMsg[]>(conversation.messages)
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -1017,9 +1035,23 @@ export default function BacklogChat({ conversation, onUpdate, onRegistered, hist
       <div className="backlog-chat-toolbar">
         <h2>{t.backlogChat.title}</h2>
         {refineId && <span className="backlog-chat-refining">{t.backlogChat.refining(refineId)}</span>}
-        {history && <HistoryMenu history={history} />}
+        {history && !wide && <HistoryMenu history={history} />}
       </div>
       <div className="backlog-chat-body">
+{history && wide && (
+  <div className="backlog-chat-rail">
+    <button type="button" className="backlog-chat-new" onClick={history.onNew}>
+      {t.backlogChat.newConversation}
+    </button>
+    <ConversationList
+      conversations={history.conversations}
+      activeId={history.activeId}
+      onSelect={history.onSelect}
+      onDelete={history.onDelete}
+      onRename={history.onRename}
+    />
+  </div>
+)}
       <div className="backlog-chat-main">
       <div className="backlog-chat-history" ref={historyRef} onScroll={onHistoryScroll}>
         {messages.length === 0 && <p className="muted">{t.backlogChat.intro}</p>}
