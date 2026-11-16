@@ -3,7 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/henriquesakata/cerne/internal/domain"
 	"github.com/henriquesakata/cerne/internal/materialize"
+	"github.com/henriquesakata/cerne/internal/store"
 	"os"
 	"path/filepath"
 	"slices"
@@ -497,5 +500,39 @@ func TestHookChannelSessionStartBoardFetchAge(t *testing.T) {
 	os.Remove(fh)
 	if out := sessionStartBoard(t, projDir); out != "- no active work\n" {
 		t.Fatalf("no FETCH_HEAD: %q", out)
+	}
+}
+
+// BenchmarkHookChannelSessionStartBoard (F-0409 crit. 3): what the board adds
+// to the session-start contact point — load + render — on a fixture backend
+// with 300 works (60 active) and 3000 events.
+func BenchmarkHookChannelSessionStartBoard(b *testing.B) {
+	dir := b.TempDir()
+	if err := store.InitLayout(dir, store.Project{Name: "Bench"}); err != nil {
+		b.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for i := 1; i <= 300; i++ {
+		st := domain.WorkDone
+		if i%5 == 0 {
+			st = domain.WorkActive
+		}
+		at := now.Add(-time.Duration(i) * time.Hour)
+		w := store.Work{ID: fmt.Sprintf("W-%04d", i), Title: "bench work", State: st, Actor: "agent", CreatedAt: at, UpdatedAt: at}
+		if err := store.SaveWork(dir, w); err != nil {
+			b.Fatal(err)
+		}
+	}
+	for i := 0; i < 3000; i++ {
+		ev := domain.Event{ID: fmt.Sprintf("e-%d", i), At: now.Add(-time.Duration(i) * time.Minute), EntityID: "F-0001", Type: "feature.doc_edited", Actor: "x"}
+		if err := store.AppendEvent(dir, ev); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if out, err := loadBoardFromClone(dir, 14, time.Now()); err != nil || out == "" {
+			b.Fatalf("%v %q", err, out)
+		}
 	}
 }
