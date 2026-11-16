@@ -14,8 +14,9 @@ import (
 var copyTree = copyTreeFiles
 
 // stagedLintRoot assembles a backend-shaped tree for linting local edits without
-// touching the backend: it copies the cache clone's entities/ and content/ (the
-// pulled snapshot — entity STATE plus markdown) into a temp dir, then overlays
+// touching the backend: it copies the cache clone's entities/, content/ and events/ (the
+// pulled snapshot — entity STATE, markdown and the event log; every directory
+// lint.RunConfig reads) into a temp dir, then overlays
 // the staged .docs/ edits onto their content/ destinations (via the same
 // collectChangedDocs→backendRel mapping push uses). lint.Run runs over this tree
 // UNCHANGED, so the validation modes share the backend's single source of rules.
@@ -41,7 +42,7 @@ func stagedLintRoot(repoDir, projDir string, skipEmpty bool) (string, stagedEdit
 		return "", stagedEdits{}, nil, err
 	}
 	cleanup := func() { _ = os.RemoveAll(root) }
-	for _, sub := range []string{"entities", "content"} {
+	for _, sub := range []string{"entities", "content", "events"} {
 		if err := copyTree(filepath.Join(repoDir, sub), filepath.Join(root, sub)); err != nil {
 			cleanup()
 			return "", stagedEdits{}, nil, err

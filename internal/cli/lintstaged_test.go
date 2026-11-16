@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -303,5 +305,74 @@ func TestLintStagedJSONEditsCount(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(out), &got); err != nil || got.Edits == nil || *got.Edits != 1 {
 		t.Fatalf("want edits 1, err=%v:\n%s", err, out)
+	}
+}
+
+// implementedNoGauntlet seeds F-0003: implemented, completed by event after the
+// Gauntlet/evidence adoption cutoffs, spec with one criterion, result with neither
+// evidence nor "## Gauntlet" (F-0403). Returns the pulled project.
+func implementedNoGauntlet(t *testing.T) (projDir, repoDir string) {
+	t.Helper()
+	projDir, _, repoDir, _ = pulledProject(t)
+	now := time.Now().UTC()
+	if err := store.SaveFeature(repoDir, store.Feature{ID: "F-0003", Title: "Orchard ledger", State: domain.StateImplemented, Facets: []string{"code"}, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("SaveFeature: %v", err)
+	}
+	writeBackendDoc(t, repoDir, "content/features/F-0003/spec.md",
+		"---\ncerne_id: F-0003\n---\n\n# Orchard ledger\n\n## Objetivo e critérios de aceitação\n\n1. Post entries.\n")
+	writeBackendDoc(t, repoDir, "content/features/F-0003/result.md",
+		"---\ncerne_id: F-0003\n---\n\n# Orchard ledger\n\n## Resultado\n\nDone.\n")
+	if err := store.AppendEvent(repoDir, domain.Event{EntityID: "F-0003", Type: "feature.completed", At: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)}); err != nil {
+		t.Fatalf("AppendEvent: %v", err)
+	}
+	if _, err := gitback.CommitAndPush(repoDir, "seed implemented F-0003"); err != nil {
+		t.Fatalf("CommitAndPush: %v", err)
+	}
+	if out, err := execCerne(t, "pull", "--dir", projDir); err != nil {
+		t.Fatalf("pull: %v\n%s", err, out)
+	}
+	return projDir, repoDir
+}
+
+// F-0403 crit. 1+4: the staged tree without edits yields the clone's findings
+// (same rule, entity, file, detail); fails when a rule reads a dir the tree lacks.
+func TestLintStagedTreeParity(t *testing.T) {
+	projDir, repoDir := implementedNoGauntlet(t)
+	cfg, _, err := project.LoadConfig(projDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := projectLint(repoDir, projDir, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _, cleanup, err := stagedLintRoot(repoDir, projDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	got, err := projectLint(root, projDir, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	has := false
+	for _, f := range want {
+		if f.Rule == lint.RuleResultMissingGauntlet {
+			has = true
+		}
+	}
+	if !has {
+		t.Fatalf("fixture must trip result-missing-gauntlet on the clone: %v", want)
+	}
+	key := func(fs []lint.Finding) []string {
+		var o []string
+		for _, f := range fs {
+			o = append(o, f.Rule+"|"+f.Entity+"|"+f.File+"|"+f.Detail)
+		}
+		sort.Strings(o)
+		return o
+	}
+	if !reflect.DeepEqual(key(got), key(want)) {
+		t.Fatalf("tree findings differ from clone:\n got %v\nwant %v", key(got), key(want))
 	}
 }
