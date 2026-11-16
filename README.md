@@ -209,9 +209,11 @@ flowchart LR
     H -- "approve / accept" --> B
 ```
 
-- The **backend** is a plain git repository you own: entities as JSON, content as markdown, events as NDJSON. No server, no SaaS, no database to operate.
+- The **backend** is a plain git repository you own, separate from your code's: a folder on your machine, a git server you run, or a private repository on GitHub or GitLab. Entities are JSON, content is markdown, events are NDJSON. No server, no SaaS, no database to operate.
 - **`.docs/`** is a projection of the current state. It is what the agent reads, and it is regenerated, never hand-curated.
 - **`docs.lock`** is committed in your project and pins the code to a documentation snapshot, so a checkout from last year reads last year's docs.
+
+**Why a separate repository.** Documentation does not always belong to one version of the code, and it does not have to follow the code's lifecycle. A product with several branches in production shares the same decisions, conventions and most of its features; copying them into each branch is how documents start to contradict each other. With one documentation repository, every branch shares the same base, the `docs.lock` in each branch records which snapshot that code goes with, and a document that applies to only one version can carry a tag or a module.
 
 ## Where your data goes
 
