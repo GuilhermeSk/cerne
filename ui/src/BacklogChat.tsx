@@ -210,8 +210,6 @@ function MenuSelect({
         className="chat-menu-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-haspopup="true"
-        aria-controls={menuId}
         aria-label={label}
         onClick={() => setOpen((o) => !o)}
       >
@@ -397,8 +395,6 @@ function ModelMenu({
         className="chat-menu-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-haspopup="true"
-        aria-controls={menuId}
         aria-label={label}
         onClick={() => {
           setOpen((o) => !o)
